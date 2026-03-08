@@ -34,6 +34,8 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:
@@ -51,7 +53,56 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
+  assets:
+      - assets/geojson/01/
+      - assets/geojson/02/
+      - assets/geojson/03/
+      - assets/geojson/04/
+      - assets/geojson/05/
+      - assets/geojson/06/
+      - assets/geojson/07/
+      - assets/geojson/08/
+      - assets/geojson/09/
+      - assets/geojson/10/
+      - assets/geojson/11/
+      - assets/geojson/12/
+      - assets/geojson/13/
+      - assets/geojson/14/
+      - assets/geojson/15/
+      - assets/geojson/16/
+      - assets/geojson/17/
+      - assets/geojson/18/
+      - assets/geojson/19/
+      - assets/geojson/20/
+      - assets/geojson/21/
+      - assets/geojson/22/
+      - assets/geojson/23/
+      - assets/geojson/24/
+      - assets/geojson/25/
+      - assets/geojson/26/
+      - assets/geojson/27/
+      - assets/geojson/28/
+      - assets/geojson/29/
+      - assets/geojson/30/
+      - assets/geojson/31/
+      - assets/geojson/32/
+      - assets/geojson/33/
+      - assets/geojson/34/
+      - assets/geojson/35/
+      - assets/geojson/36/
+      - assets/geojson/37/
+      - assets/geojson/38/
+      - assets/geojson/39/
+      - assets/geojson/40/
+      - assets/geojson/41/
+      - assets/geojson/42/
+      - assets/geojson/43/
+      - assets/geojson/44/
+      - assets/geojson/45/
+      - assets/geojson/46/
+      - assets/geojson/47/
+      - assets/geojson/custom/
+      - assets/geojson/prefectures/
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
