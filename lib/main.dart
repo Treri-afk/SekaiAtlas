@@ -60,7 +60,7 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
        body: <Widget>[
           MapPage(),
-          PhotoPage(),
+          TakePictureScreen(),
           GroupePage(),
       ][currentPageIndex],
     );
