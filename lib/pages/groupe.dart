@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
+import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/UserPopup.dart';
 
 class GroupePage extends StatelessWidget {
@@ -40,7 +41,7 @@ class GroupePage extends StatelessWidget {
                     ), 
                   ),
                   Spacer(),
-                  IconButton(onPressed: () => {   }, 
+                  IconButton(onPressed: () => { FriendsPopUp.show(context) }, 
                     icon: Icon(Icons.add_reaction), 
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.resolveWith<Color?>(
