@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart';
+//import 'package:path/path.dart';
 import 'package:sekai_atlas/features/Friends.dart';
+import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/UserPopup.dart';
 
 class GroupePage extends StatelessWidget {
@@ -117,32 +118,7 @@ class GroupePage extends StatelessWidget {
                     Text("Listes des aventures", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0), 
-                      child: SizedBox(
-                        height: 100,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: 5,
-
-                          itemBuilder: (context, index) {
-
-                            return InkWell(
-                              onTap: () {
-                                 print("je te baise $index fois");
-                                // ici tu pourras afficher le profil
-                              },
-                              child: Container(
-                                width: 100,
-                                color: Colors.blue,
-                                child: Center(child: Text("Item $index")),
-                              ),
-                            );
-                          },
-
-                          separatorBuilder: (context, index) {
-                            return SizedBox(width: 10); // espace entre chaque élément
-                          },
-                        ),
-                      ),
+                      child: ListeAventure(itemCount: 0)
                     )
                     
                   ] 
