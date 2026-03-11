@@ -67,13 +67,45 @@ class GroupePage extends StatelessWidget {
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 20, 0, 0)),
                   Text("Aventure en cours", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0)),
-                  ClipRRect(
-                    borderRadius: BorderRadiusGeometry.circular(20),
-                    child: Container(
-                      height: 300,
-                      color: Colors.amber,
-                    ),
-                  )
+                  
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadiusGeometry.circular(20),
+                        child: Container(
+                          height: 300,
+                          color: Colors.amber,
+                        ),
+                      ),
+                    
+                      Positioned(
+                        bottom: 15,
+                        left: 15,
+                        child: SizedBox(
+                          height: 40,
+                          width: (users.length * 20) + 20,
+                          child: Stack(
+                            children: [
+                              ...List<Widget>.generate(users.length, (index){
+                                final user = users[index];
+                                return Positioned(
+                                  left: index * 20,
+                                  child: CircleAvatar(
+                                    radius: 20,
+                                    backgroundColor: Colors.white,
+                                    child: CircleAvatar(
+                                      radius: 18,
+                                      backgroundImage: NetworkImage(user["image"]!),
+                                    ),
+                                  )
+                                );
+                              })
+                            ],
+                          ),
+                        )
+                      )
+                    ],
+                  ),
                 ]
               ), 
               Padding(
