@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sekai_atlas/features/AventureEnCours.dart';
 //import 'package:path/path.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
@@ -68,45 +69,7 @@ class GroupePage extends StatelessWidget {
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 20, 0, 0)),
                   Text("Aventure en cours", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0)),
-                  
-                  Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadiusGeometry.circular(20),
-                        child: Container(
-                          height: 300,
-                          color: Colors.amber,
-                        ),
-                      ),
-                    
-                      Positioned(
-                        bottom: 15,
-                        left: 15,
-                        child: SizedBox(
-                          height: 40,
-                          width: (users.length * 20) + 20,
-                          child: Stack(
-                            children: [
-                              ...List<Widget>.generate(users.length, (index){
-                                final user = users[index];
-                                return Positioned(
-                                  left: index * 20,
-                                  child: CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: Colors.white,
-                                    child: CircleAvatar(
-                                      radius: 18,
-                                      backgroundImage: NetworkImage(user["image"]!),
-                                    ),
-                                  )
-                                );
-                              })
-                            ],
-                          ),
-                        )
-                      )
-                    ],
-                  ),
+                  AventureEnCours(EnCours: false, Users: users)
                 ]
               ), 
               Padding(
