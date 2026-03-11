@@ -14,7 +14,7 @@ class FriendsPopUp {
 
         return Container(
           padding: EdgeInsets.all(20),
-          height: MediaQuery.of(context).size.height - 200,
+          height: MediaQuery.of(context).size.height - 500,
           width: MediaQuery.of(context).size.width - 50,
 
           child: Column(
