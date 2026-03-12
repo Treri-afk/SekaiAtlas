@@ -69,7 +69,7 @@ class GroupePage extends StatelessWidget {
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 20, 0, 0)),
                   Text("Aventure en cours", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Padding(padding: EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0)),
-                  AventureEnCours(EnCours: false, Users: users)
+                  AventureEnCours(EnCours: true, Users: users)
                 ]
               ), 
               Padding(
@@ -81,7 +81,7 @@ class GroupePage extends StatelessWidget {
                     Text("Listes des aventures", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0), 
-                      child: ListeAventure(itemCount: 0)
+                      child: ListeAventure(itemCount: 5)
                     )
                     
                   ] 
