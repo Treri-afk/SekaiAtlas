@@ -19,26 +19,18 @@ class UserPopup {
 
               CircleAvatar(
                 radius: 40,
-                backgroundImage: NetworkImage(user["image"]),
+                backgroundImage: NetworkImage(user["avatar_url"]),
               ),
 
               SizedBox(height: 10),
 
               Text(
-                user["name"],
+                user["username"],
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
-              SizedBox(height: 20),
-
-              ElevatedButton(
-                onPressed: () {},
-                child: Text("Voir profil"),
-              )
-
             ],
           ),
         );

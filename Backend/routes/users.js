@@ -16,6 +16,19 @@ router.get("/", (req, res) => {
 
 });
 
+// GET /users/user?user_id=1
+router.get("/user", (req, res) => {
+  const { user_id } = req.query;
+
+  db.query("SELECT * FROM users WHERE id = ?", [user_id], (err, results) => {
+    if (err) return res.status(500).json(err);
+
+    if (results.length === 0) return res.status(404).json({ message: "User not found" });
+
+    res.json(results[0]);
+  });
+});
+
 router.post("/", (req, res) => {
   // Récupère les paramètres depuis le body
   const { provider, provider_id, username, avatar_url } = req.body;

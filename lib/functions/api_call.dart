@@ -1,25 +1,26 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-class api_call {
-  
-  String baseURL = "http://localhost:3000/";
+const String baseURL = "http://10.0.2.2:3000";
 
+Future<List<dynamic>> fetchFriends(user_id) async {
+  final response = await http.get(Uri.parse('$baseURL/friends/friend?user_id=$user_id'));
 
-  Future<void> fetchFriends() async {
-    final response = await http.get(Uri.parse('$baseURL/friend?user_id=1'));
+  if (response.statusCode == 200) {
+    List<dynamic> friends = json.decode(response.body);
+    return friends; // <-- IMPORTANT : retourne la liste
+  } else {
+    throw Exception('Erreur fetchFriends : ${response.statusCode}');
+  }
+}
 
-    if (response.statusCode == 200) {
-      // Parse JSON
-      List<dynamic> friends = json.decode(response.body);
+Future<Map<String, dynamic>> fetchUser(user_id) async {
+  final response = await http.get(Uri.parse('$baseURL/users/user?user_id=$user_id'));
 
-      // Chaque élément est une Map<String, dynamic>
-      for (var friend in friends) {
-        print(friend['username']);   // ex: "alex"
-        print(friend['avatar_url']); // ex: "https://picsum.photos/205"
-      }
-    } else {
-      print('Erreur : ${response.statusCode}');
-    }
+  if (response.statusCode == 200) {
+    Map<String, dynamic> user = json.decode(response.body);
+    return user; // <-- IMPORTANT : retourne la liste
+  } else {
+    throw Exception('Erreur fetchFriends : ${response.statusCode}');
   }
 }
