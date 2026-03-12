@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:sekai_atlas/features/AventureEnCours.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
+import 'package:sekai_atlas/features/ListeAventurier.dart';
 import 'package:sekai_atlas/features/UserPopup.dart';
 import '../functions/api_call.dart';
 
@@ -76,7 +77,7 @@ class _GroupePageState extends State<GroupePage> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(actualUser["username"], style: TextStyle(fontSize: 18)),
+                              Text(actualUser["username"], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           const Spacer(),
@@ -126,7 +127,7 @@ class _GroupePageState extends State<GroupePage> {
                                   fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 10),
-                            ListeAventure(itemCount: 5),
+                            ListeAventure(itemCount: 0),
                           ],
                         ),
                       ),
@@ -143,27 +144,7 @@ class _GroupePageState extends State<GroupePage> {
                                   fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 10),
-                            SizedBox(
-                              height: 80,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: friends.length,
-                                itemBuilder: (context, index) {
-                                  final friend = friends[index];
-                                  return InkWell(
-                                    onTap: () {
-                                      UserPopup.show(context, friend);
-                                    },
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(50),
-                                      child: Image.network(friend["avatar_url"]),
-                                    ),
-                                  );
-                                },
-                                separatorBuilder: (context, index) =>
-                                    const SizedBox(width: 10),
-                              ),
-                            ),
+                            ListeAventurier(users: friends)
                           ],
                         ),
                       ),
