@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 class ListeAventure extends StatelessWidget {
-  final int itemCount;
+  final List<dynamic>? adventures;
 
-  const ListeAventure({Key? key, this.itemCount = 5}) : super(key: key);
+  const ListeAventure({Key? key, this.adventures}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    if (itemCount == 0) {
+    if (adventures?.length == 0) {
       return Container(
         height: 60, // garde la même hauteur
         alignment: Alignment.center,
@@ -22,8 +22,9 @@ class ListeAventure extends StatelessWidget {
       height: 100,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: itemCount,
+        itemCount: adventures!.length,
         itemBuilder: (context, index) {
+          final adventure = adventures![index];
           return InkWell(
             onTap: () {
               print("Aventure $index cliquée");
@@ -34,7 +35,7 @@ class ListeAventure extends StatelessWidget {
               color: Colors.blue,
               child: Center(
                 child: Text(
-                  "Item $index",
+                  adventure["name"],
                   style: TextStyle(color: Colors.white),
                 ),
               ),

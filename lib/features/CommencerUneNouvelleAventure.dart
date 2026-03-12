@@ -95,7 +95,7 @@ class CommencerUneNouvelleAventureForm {
                                 onTap: () => toggleSelected(index),
                                 child: CircleAvatar(
                                   radius: 50,
-                                  backgroundImage: NetworkImage(user['image']!),
+                                  backgroundImage: NetworkImage(user['avatar_url']!),
                                 ),
                               ),
                               Positioned(

@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:sekai_atlas/features/AventureEnCours.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
-import 'package:sekai_atlas/features/UserPopup.dart';
 import '../functions/api_call.dart';
 
 class GroupePage extends StatefulWidget {
@@ -18,6 +15,7 @@ class GroupePage extends StatefulWidget {
 class _GroupePageState extends State<GroupePage> {
   List<dynamic> friends = []; // Liste des utilisateurs récupérés depuis l'API
   Map<String, dynamic> actualUser = {};
+  List<dynamic> adventures = [];
   bool isLoading = true;
     List users = [
     {"name": "Alice", "image": "https://picsum.photos/200"},
@@ -39,15 +37,14 @@ class _GroupePageState extends State<GroupePage> {
     try {
       final friendsList = await fetchFriends(1); // récupère la liste depuis API
       final connectedUser = await fetchUser(1);
+      final adventureList = await fetchAdventure(1);
       setState(() {
         friends = friendsList; // update la liste
         actualUser = connectedUser;
-        print("pas error $actualUser");
+        adventures = adventureList;
         isLoading = false;   // stop le spinner
-        
       });
     } catch (e) {
-      print("error$e");
       setState(() => isLoading = false);
     }
   }
@@ -98,7 +95,8 @@ class _GroupePageState extends State<GroupePage> {
                           )
                         ],
                       ),
-                      const Divider(),
+                      SizedBox(height: 20,),
+                      Divider(thickness: 4,indent: 50, endIndent: 50, color: Colors.blue,),
 
                       // Aventure en cours
                       Column(
@@ -111,7 +109,7 @@ class _GroupePageState extends State<GroupePage> {
                                 fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 10),
-                          AventureEnCours(EnCours: true, Users: users),
+                          AventureEnCours(),
                         ],
                       ),
 
@@ -127,7 +125,7 @@ class _GroupePageState extends State<GroupePage> {
                                   fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 10),
-                            ListeAventure(itemCount: 0),
+                            ListeAventure(adventures: adventures),
                           ],
                         ),
                       ),

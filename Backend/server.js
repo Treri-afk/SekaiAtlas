@@ -11,6 +11,10 @@ const friendsRoutes = require("./routes/friends");
 
 app.use("/friends", friendsRoutes);
 
+const aventureRoutes = require("./routes/aventure");
+
+app.use("/aventure", aventureRoutes);
+
 
 
 
