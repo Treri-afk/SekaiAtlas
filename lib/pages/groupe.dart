@@ -3,164 +3,437 @@ import 'package:sekai_atlas/features/AventureEnCours.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
+import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../functions/api_call.dart';
 
 class GroupePage extends StatefulWidget {
   const GroupePage({Key? key}) : super(key: key);
-
   @override
   State<GroupePage> createState() => _GroupePageState();
 }
 
-class _GroupePageState extends State<GroupePage> {
-  List<dynamic> friends = []; // Liste des utilisateurs récupérés depuis l'API
+class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
   Map<String, dynamic> actualUser = {};
+  List<dynamic> friends    = [];
   List<dynamic> adventures = [];
   bool isLoading = true;
-    List users = [
-    {"name": "Alice", "image": "https://picsum.photos/200"},
-    {"name": "Bob", "image": "https://picsum.photos/201"},
-    {"name": "Paul", "image": "https://picsum.photos/202"},
-    {"name": "Jean", "image": "https://picsum.photos/203"},
-    {"name": "Juliette", "image": "https://picsum.photos/204"},
-    {"name": "Yoshi", "image": "https://picsum.photos/205"},
-    {"name": "Laurent", "image": "https://picsum.photos/206"},
-    {"name": "Nico", "image": "https://picsum.photos/207"},
-  ];
+
   @override
   void initState() {
     super.initState();
-    loadPage();
+    _load();
   }
 
-  void loadPage() async {
+  Future<void> _load() async {
     try {
-      final providerId = Supabase.instance.client.auth.currentUser?.id;
-      
-      if (providerId == null) throw 'Utilisateur non connecté';
-
-      
-      final connectedUser = await fetchUserByProviderId(providerId);
-      print(connectedUser);
-      final friendsList = await fetchFriends(connectedUser["id"]);
-
-      final adventureList = await fetchAdventure(connectedUser["id"]);
+      final pid = Supabase.instance.client.auth.currentUser?.id;
+      if (pid == null) throw 'Non connecté';
+      final u = await fetchUserByProviderId(pid);
+      final f = await fetchFriends(u["id"]);
+      final a = await fetchAdventure(u["id"]);
+      if (!mounted) return;
       setState(() {
-        
-        actualUser = connectedUser;
-        friends = friendsList;
-        adventures = adventureList;
-        isLoading = false;
+        actualUser = u;
+        friends    = f;
+        adventures = a;
+        isLoading  = false;
       });
     } catch (e) {
-      print('Erreur loadPage : $e');
-      setState(() => isLoading = false);
+      debugPrint('Erreur: $e');
+      if (mounted) setState(() => isLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
+      backgroundColor: kBg,
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: kPrimary, strokeWidth: 3),
+            )
+          : CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 190,
+                  pinned: true,
+                  backgroundColor: kBg,
+                  elevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: _buildHeader(),
+                  ),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16, top: 6),
+                      child: _GlowButton(
+                        icon: Icons.person_add_alt_1,
+                        onTap: () => FriendsPopUp.show(context),
+                      ),
+                    ),
+                  ],
+                ),
+                SliverToBoxAdapter(child: const _RpgDivider()),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 60),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const _SectionLabel(title: 'Aventure en cours', sub: 'quête active'),
+                      const SizedBox(height: 12),
+                      const AventureEnCours(),
+                      const SizedBox(height: 32),
+                      _SectionLabel(title: 'Mes aventures', sub: '${adventures.length} quêtes'),
+                      const SizedBox(height: 12),
+                      ListeAventure(adventures: adventures),
+                      const SizedBox(height: 32),
+                      _SectionLabel(title: 'La guilde', sub: '${friends.length} membres'),
+                      const SizedBox(height: 12),
+                      ListeAventurier(users: friends),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  // ── Header parchemin clair ─────────────────
+  Widget _buildHeader() {
+    return Container(
+      decoration: const BoxDecoration(color: kBg),
+      child: Stack(
+        children: [
+          // Lueur décorative coin droit
+          Positioned(
+            right: -20, top: -20,
+            child: Container(
+              width: 220, height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [kPrimary.withOpacity(0.07), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+          // Décor hexagonal coin droit
+          Positioned(
+            right: -10, top: 10,
+            child: _GeometricDecor(size: 150, color: kPrimary.withOpacity(0.09)),
+          ),
+          // Contenu
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 60, 72, 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Avatar avec bordure dorée
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kPrimary, width: 2.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: kPrimary.withOpacity(0.25),
+                        blurRadius: 14,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 36,
+                    backgroundColor: kBgCard2,
+                    backgroundImage: actualUser["avatar_url"] != null
+                        ? NetworkImage(actualUser["avatar_url"])
+                        : null,
+                    child: actualUser["avatar_url"] == null
+                        ? const Icon(Icons.person, color: kTextMid, size: 32)
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Infos utilisateur
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Header avec avatar
-                      Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(50),
-                            child: Image.network(
-                              actualUser["avatar_url"],
-                              width: 80,
-                              height: 80,
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(actualUser["username"], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () => {FriendsPopUp.show(context)},
-                            icon: const Icon(Icons.add_reaction),
-                            style: ButtonStyle(
-                              backgroundColor:
-                                  MaterialStateProperty.all<Color>(Colors.blue),
-                              foregroundColor:
-                                  MaterialStateProperty.all<Color>(Colors.white),
-                              shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                      // Pseudo
+                      Text(
+                        actualUser["username"] ?? 'Aventurier',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: kText,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Badge "Membre de la guilde"
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: kPrimary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: kPrimary.withOpacity(0.35)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_awesome, size: 11, color: kPrimary),
+                            const SizedBox(width: 5),
+                            const Text(
+                              'Membre de la guilde',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: kPrimary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          )
-                        ],
+                          ],
+                        ),
                       ),
-                      SizedBox(height: 20,),
-                      Divider(thickness: 4,indent: 50, endIndent: 50, color: Colors.blue,),
-
-                      // Aventure en cours
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 8),
+                      // Stats alliés / quêtes
+                      Row(
                         children: [
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Aventure en cours",
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
+                          _MiniStat(
+                            icon: Icons.shield,
+                            value: '${friends.length}',
+                            label: 'alliés',
                           ),
-                          const SizedBox(height: 10),
-                          AventureEnCours(),
+                          const SizedBox(width: 8),
+                          _MiniStat(
+                            icon: Icons.map,
+                            value: '${adventures.length}',
+                            label: 'quêtes',
+                          ),
                         ],
-                      ),
-
-                      // Listes des aventures
-                      Padding(
-                        padding: const EdgeInsets.only(top: 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Listes des aventures",
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 10),
-                            ListeAventure(adventures: adventures),
-                          ],
-                        ),
-                      ),
-
-                      // Aventuriers de la guilde (liste horizontale)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Aventuriers de la guilde",
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 10),
-                            ListeAventurier(users: friends)
-                          ],
-                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────
+//  WIDGETS INTERNES
+// ─────────────────────────────────────────────
+
+class _GlowButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _GlowButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40, height: 40,
+        decoration: BoxDecoration(
+          color: kPrimary,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: kPrimary.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String title, sub;
+  const _SectionLabel({required this.title, required this.sub});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: kText, fontSize: 15,
+                fontWeight: FontWeight.w800, letterSpacing: 0.3,
+              ),
+            ),
+            Text(
+              sub,
+              style: const TextStyle(
+                color: kTextDim, fontSize: 11, letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [kPrimary.withOpacity(0.35), Colors.transparent],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String value, label;
+  const _MiniStat({required this.icon, required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: kPrimary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: kPrimary.withOpacity(0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: kPrimary),
+          const SizedBox(width: 4),
+          Text(
+            '$value $label',
+            style: const TextStyle(
+              fontSize: 11, color: kTextMid, fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RpgDivider extends StatelessWidget {
+  const _RpgDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.transparent, kPrimary.withOpacity(0.3)],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Text(
+              '✦',
+              style: TextStyle(color: kPrimary.withOpacity(0.5), fontSize: 14),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [kPrimary.withOpacity(0.3), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  GEOMETRIC DECOR (hexagone)
+// ─────────────────────────────────────────────
+class _GeometricDecor extends StatelessWidget {
+  final double size;
+  final Color color;
+  const _GeometricDecor({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _HexPainter(color: color),
+    );
+  }
+}
+
+class _HexPainter extends CustomPainter {
+  final Color color;
+  const _HexPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    for (int r = 1; r <= 3; r++) {
+      final path = Path();
+      for (int i = 0; i < 6; i++) {
+        final angle = (i * 60 - 30) * 3.14159265 / 180;
+        final x = cx + r * 22.0 * _cos(angle);
+        final y = cy + r * 22.0 * _sin(angle);
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+      path.close();
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  double _cos(double a) {
+    a = a % (2 * 3.14159265);
+    double r = 1, t = 1;
+    for (int i = 1; i <= 12; i++) {
+      t *= -a * a / ((2 * i - 1) * (2 * i));
+      r += t;
+    }
+    return r;
+  }
+
+  double _sin(double a) {
+    a = a % (2 * 3.14159265);
+    double r = a, t = a;
+    for (int i = 1; i <= 12; i++) {
+      t *= -a * a / ((2 * i) * (2 * i + 1));
+      r += t;
+    }
+    return r;
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

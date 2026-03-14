@@ -2,65 +2,148 @@ import 'package:flutter/material.dart';
 import 'package:sekai_atlas/features/CopyField.dart';
 import 'package:sekai_atlas/features/FriendCodeField.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
+import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FriendsPopUp {
-
   static void show(BuildContext rootContext) async {
-
-    // Récupère le friend_code de l'utilisateur connecté
-    final providerId = Supabase.instance.client.auth.currentUser?.id;
-    if (providerId == null) return;
-
-    final connectedUser = await fetchUserByProviderId(providerId);
-    final friendCode = connectedUser["friend_code"] ?? 'Aucun code ami';
+    final pid = Supabase.instance.client.auth.currentUser?.id;
+    if (pid == null) return;
+    final u = await fetchUserByProviderId(pid);
+    final friendCode = u["friend_code"] ?? 'Aucun code';
+    if (!rootContext.mounted) return;
 
     showModalBottomSheet(
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       context: rootContext,
-      builder: (context) {
-        return Container(
-          padding: EdgeInsets.all(20),
-          height: MediaQuery.of(context).size.height - 500,
-          width: MediaQuery.of(context).size.width - 50,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Handle
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0, 20, 0, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.only(top: 14),
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: kEmerald.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              // Header
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: kEmerald.withOpacity(0.15)),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(0, 0, 0, 10),
-                      child: Text(
-                        "Mon code ami",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: kEmerald.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: kEmerald.withOpacity(0.3)),
+                      ),
+                      child: const Icon(Icons.people, color: kEmerald, size: 18),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'ALLIANCE',
+                      style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w900,
+                        color: kText, letterSpacing: 1.5,
                       ),
                     ),
-                    CopyField(text: friendCode), // ← vrai friend_code
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(
+                          color: kBgCard,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: kEmerald.withOpacity(0.15)),
+                        ),
+                        child: Icon(Icons.close, size: 16,
+                            color: kTextMid.withOpacity(0.6)),
+                      ),
+                    ),
                   ],
                 ),
               ),
+              // Body
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0, 20, 0, 10),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(0, 0, 0, 10),
-                      child: Text(
-                        "Ajouter un ami",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                    _AllianceSection(
+                      label: 'MON CODE AVENTURIER',
+                      icon: Icons.qr_code,
+                      child: CopyField(text: friendCode),
                     ),
-                    FriendCodeField()
+                    const SizedBox(height: 24),
+                    _AllianceSection(
+                      label: 'INVITER UN AVENTURIER',
+                      icon: Icons.person_search,
+                      child: const FriendCodeField(),
+                    ),
                   ],
                 ),
-              )
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+}
+
+// Nom unique pour éviter tout conflit
+class _AllianceSection extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Widget child;
+  const _AllianceSection({
+    required this.label,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 12, color: kEmerald),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w800,
+                color: kTextDim, letterSpacing: 1.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        child,
+      ],
     );
   }
 }
