@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sekai_atlas/features/CommencerUneNouvelleAventure.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AventureEnCours extends StatefulWidget {
   const AventureEnCours({Key? key}) : super(key: key);
@@ -21,17 +22,31 @@ class _AventureEnCoursState extends State<AventureEnCours> {
     loadUsers();
   }
 
-  Future<void> loadUsers() async {
-    final friendsList = await fetchFriends(1);
-    final data = await adventureRunning(1);
+Future<void> loadUsers() async {
+    try {
+      final providerId = Supabase.instance.client.auth.currentUser?.id;
+      if (providerId == null) throw 'Utilisateur non connecté';
+      
+      final connectedUser = await fetchUserByProviderId(providerId);
+      final friendsList = await fetchFriends(connectedUser["id"]);
+      final data = await adventureRunning(connectedUser["id"]);
+      print(data);
 
-    setState(() {
-      friend = friendsList;
-      users = data[0]["result"]["players"];
-      adventure = data[0]["result"]["adventure"];
-      print(friend![0]);
-      loading = false;
-    });
+      setState(() {
+        friend = friendsList;
+        users = data.isNotEmpty ? data[0]["result"]["players"] : [];
+        adventure = data.isNotEmpty ? data[0]["result"]["adventure"] : null;
+        loading = false;
+      });
+    } catch (e) {
+      print('Erreur loadUsers : $e');
+      setState(() {
+        loading = false; // ← stoppe le loader même en cas d'erreur
+        users = [];
+        friend = [];
+        adventure = null;
+      });
+    }
   }
 
   @override

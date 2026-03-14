@@ -3,6 +3,7 @@ import 'package:sekai_atlas/features/AventureEnCours.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../functions/api_call.dart';
 
 class GroupePage extends StatefulWidget {
@@ -35,16 +36,25 @@ class _GroupePageState extends State<GroupePage> {
 
   void loadPage() async {
     try {
-      final friendsList = await fetchFriends(1); // récupère la liste depuis API
-      final connectedUser = await fetchUser(1);
-      final adventureList = await fetchAdventure(1);
+      final providerId = Supabase.instance.client.auth.currentUser?.id;
+      
+      if (providerId == null) throw 'Utilisateur non connecté';
+
+      
+      final connectedUser = await fetchUserByProviderId(providerId);
+      print(connectedUser);
+      final friendsList = await fetchFriends(connectedUser["id"]);
+
+      final adventureList = await fetchAdventure(connectedUser["id"]);
       setState(() {
-        friends = friendsList; // update la liste
+        
         actualUser = connectedUser;
+        friends = friendsList;
         adventures = adventureList;
-        isLoading = false;   // stop le spinner
+        isLoading = false;
       });
     } catch (e) {
+      print('Erreur loadPage : $e');
       setState(() => isLoading = false);
     }
   }

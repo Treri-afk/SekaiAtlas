@@ -38,41 +38,42 @@ router.get("/user", (req, res) =>{
 router.get("/running", (req, res) => {
     const { user_id } = req.query;
 
-    const sql = `SELECT JSON_OBJECT(
-  'adventure', JSON_OBJECT(
-      'id', a.id,
-      'name', a.name,
-      'description', a.description,
-      'creator_id', a.creator_id,
-      'created_at', a.created_at,
-      'is_running', a.is_running
-  ),
-  'players', JSON_ARRAYAGG(
-      JSON_OBJECT(
-          'id', u.id,
-          'username', u.username,
-          'image', u.avatar_url
-      )
-  )
-) AS result
-FROM adventures a
-JOIN adventure_participants ap ON ap.adventure_id = a.id
-JOIN users u ON u.id = ap.user_id
-WHERE a.is_running = 1
-AND EXISTS (
-    SELECT 1
-    FROM adventure_participants ap2
-    WHERE ap2.adventure_id = a.id
-    AND ap2.user_id = 2
-)
-GROUP BY a.id;`;
+    const sql = `
+        SELECT JSON_OBJECT(
+            'adventure', JSON_OBJECT(
+                'id', a.id,
+                'name', a.name,
+                'description', a.description,
+                'creator_id', a.creator_id,
+                'created_at', a.created_at,
+                'is_running', a.is_running
+            ),
+            'players', JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'id', u.id,
+                    'username', u.username,
+                    'image', u.avatar_url
+                )
+            )
+        ) AS result
+        FROM adventures a
+        JOIN adventure_participants ap ON ap.adventure_id = a.id
+        JOIN users u ON u.id = ap.user_id
+        WHERE a.is_running = 1
+        AND EXISTS (
+            SELECT 1
+            FROM adventure_participants ap2
+            WHERE ap2.adventure_id = a.id
+            AND ap2.user_id = ?
+        )
+        GROUP BY a.id
+    `;
+
     db.query(sql, [user_id], (err, results) => {
         if (err) return res.status(500).json(err);
-
         res.json(results);
     });
-})
-
+});
 
 
 
