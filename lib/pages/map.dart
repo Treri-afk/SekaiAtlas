@@ -12,14 +12,13 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> {
   late final MapController _mapController;
-  List<Polygon> _districtPolygons = [];
-
+  //List<Polygon> _polygons = [];
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
-    _loadPolygons();
+    //_loadPolygons();
   }
 
   @override
@@ -28,18 +27,19 @@ class _MapPageState extends State<MapPage> {
     super.dispose();
   }
 
- Future<void> _loadPolygons() async {
-    final districts = await createPolygonsForPrefecture('13');
-    setState(() {
-      _districtPolygons = districts;
-    });
-  }
+  //Future<void> _loadPolygons() async {
+  //  final polygons = await createPolygonsAllPrefecture();
+  //  setState(() {
+  //    _polygons = polygons;
+  //  });
+  // }
+
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
       mapController: _mapController,
       options: const MapOptions(
-        initialCenter: LatLng(40.8566, 140.3522),
+        initialCenter: LatLng(35.6762, 139.6503),
         initialZoom: 5,
       ),
       children: [
@@ -47,7 +47,7 @@ class _MapPageState extends State<MapPage> {
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.sekaiatlas.map',
         ),
-        PolygonLayer(polygons: _districtPolygons),   // quartiers en dessous
+        //PolygonLayer(polygons: _polygons),
       ],
     );
   }
