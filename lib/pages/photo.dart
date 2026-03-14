@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
 
 // ─────────────────────────────────────────────
 //  TAKE PICTURE SCREEN
@@ -106,6 +109,21 @@ class TakePictureScreenState extends State<TakePictureScreen>
     setState(() {
       _initializeControllerFuture = _initCamera();
     });
+  }
+
+  Future<void> _openGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 95,
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DisplayPictureScreen(imagePath: picked.path),
+      ),
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -333,10 +351,7 @@ class TakePictureScreenState extends State<TakePictureScreen>
                 onTap: () => setState(() => _showGrid = !_showGrid),
                 active: _showGrid,
               ),
-              _TopBarButton(
-                icon: Icons.aspect_ratio,
-                onTap: () {},
-              ),
+
             ],
           ),
         ),
@@ -364,17 +379,20 @@ class TakePictureScreenState extends State<TakePictureScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // Galerie
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white30),
-                ),
-                child: const Icon(
-                  Icons.photo_library_outlined,
-                  color: Colors.white54,
+              GestureDetector(
+                onTap: _openGallery,
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white30),
+                  ),
+                  child: const Icon(
+                    Icons.photo_library_outlined,
+                    color: Colors.white70,
+                  ),
                 ),
               ),
               // Shutter
@@ -512,10 +530,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   // ── Filtre sélectionné
   int _selectedFilter = 0;
 
-  // ── Tags
-  final List<String> _tags = [];
-  final TextEditingController _tagController = TextEditingController();
-
   // ── Caption
   final TextEditingController _captionController = TextEditingController();
 
@@ -591,36 +605,8 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
 
   @override
   void dispose() {
-    _tagController.dispose();
     _captionController.dispose();
     super.dispose();
-  }
-
-  // ── Recadrer ─────────────────────────────────
-  Future<void> _cropImage() async {
-    final croppedFile = await ImageCropper().cropImage(
-      sourcePath: _currentPath,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Recadrer',
-          toolbarColor: Colors.black,
-          toolbarWidgetColor: Colors.white,
-          backgroundColor: Colors.black,
-          activeControlsWidgetColor: Colors.white,
-          cropFrameColor: Colors.white,
-          cropGridColor: Colors.white30,
-          lockAspectRatio: false,
-        ),
-        IOSUiSettings(
-          title: 'Recadrer',
-          cancelButtonTitle: 'Annuler',
-          doneButtonTitle: 'Valider',
-        ),
-      ],
-    );
-    if (croppedFile != null) {
-      setState(() => _currentPath = croppedFile.path);
-    }
   }
 
   // ── Filtre ───────────────────────────────────
@@ -707,99 +693,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
     );
   }
 
-  // ── Tagger ───────────────────────────────────
-  void _showTagSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          left: 20, right: 20, top: 20,
-        ),
-        child: StatefulBuilder(
-          builder: (ctx, setSheetState) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Tags', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              // Chips existants
-              if (_tags.isNotEmpty)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _tags.map((tag) => Chip(
-                    label: Text('#$tag', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                    backgroundColor: Colors.white12,
-                    deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white54),
-                    onDeleted: () {
-                      setState(() => _tags.remove(tag));
-                      setSheetState(() {});
-                    },
-                    side: BorderSide.none,
-                  )).toList(),
-                ),
-              const SizedBox(height: 12),
-              // Champ saisie
-              TextField(
-                controller: _tagController,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Ajouter un tag…',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: Colors.white12,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.add, color: Colors.white),
-                    onPressed: () {
-                      final tag = _tagController.text.trim().replaceAll('#', '');
-                      if (tag.isNotEmpty && !_tags.contains(tag)) {
-                        setState(() => _tags.add(tag));
-                        setSheetState(() {});
-                        _tagController.clear();
-                      }
-                    },
-                  ),
-                ),
-                onSubmitted: (val) {
-                  final tag = val.trim().replaceAll('#', '');
-                  if (tag.isNotEmpty && !_tags.contains(tag)) {
-                    setState(() => _tags.add(tag));
-                    setSheetState(() {});
-                    _tagController.clear();
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Valider'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ── Publier ──────────────────────────────────
   Future<void> _publish() async {
     setState(() {
@@ -838,7 +731,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         'user_id': userId,
         'image_url': publicUrl,
         'caption': _captionController.text.trim(),
-        'tags': _tags,
         'filter': _filters[_selectedFilter]['label'],
         'created_at': DateTime.now().toIso8601String(),
       });
@@ -945,37 +837,14 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _BottomAction(
-                          icon: Icons.crop,
-                          label: 'Recadrer',
-                          onTap: _cropImage,
-                        ),
-                        _BottomAction(
                           icon: Icons.color_lens_outlined,
                           label: 'Filtre',
                           onTap: _showFilterSheet,
                           active: _selectedFilter != 0,
                         ),
-                        _BottomAction(
-                          icon: Icons.local_offer_outlined,
-                          label: 'Tags${_tags.isNotEmpty ? ' (${_tags.length})' : ''}',
-                          onTap: _showTagSheet,
-                          active: _tags.isNotEmpty,
-                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Tags preview
-                    if (_tags.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Wrap(
-                          spacing: 6,
-                          children: _tags.map((t) => Text(
-                            '#$t',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
-                          )).toList(),
-                        ),
-                      ),
                     // Caption
                     TextField(
                       controller: _captionController,
@@ -1058,20 +927,57 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
 
   // ── Sauvegarder en galerie ────────────────────
   Future<void> _saveToGallery() async {
-    // Nécessite image_gallery_saver ou gal package
-    // await Gal.putImage(_currentPath);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sauvegardé dans la galerie'), backgroundColor: Colors.green),
-    );
+    try {
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess(toAlbum: true);
+        if (!granted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Permission galerie refusée'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+      await Gal.putImage(_currentPath, album: 'SekaiAtlas');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo sauvegardée dans la galerie ✓'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Gallery save error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // ── Partager ─────────────────────────────────
   Future<void> _shareImage() async {
-    // Nécessite share_plus package
-    // await Share.shareXFiles([XFile(_currentPath)]);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Partage bientôt disponible')),
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(_currentPath)],
+        text: _captionController.text.trim().isEmpty
+            ? null
+            : _captionController.text.trim(),
+      );
+    } catch (e) {
+      debugPrint('Share error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur partage : $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
