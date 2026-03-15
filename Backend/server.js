@@ -18,6 +18,10 @@ const aventureRoutes = require("./routes/aventure");
 
 app.use("/aventure", aventureRoutes);
 
+const photosRouter = require('./routes/photos');
+
+app.use('/photos', photosRouter);
+
 
 
 

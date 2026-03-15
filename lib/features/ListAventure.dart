@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:sekai_atlas/features/AventureDetailPopup.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
-
-const _cardGradients = [
-  [Color(0xFF0A3D1A), Color(0xFF0D5C22)],
-  [Color(0xFF0A2A3D), Color(0xFF0D4060)],
-  [Color(0xFF2A0A3D), Color(0xFF3D0D5C)],
-  [Color(0xFF3D280A), Color(0xFF5C3E0D)],
-  [Color(0xFF3D0A1A), Color(0xFF5C0D28)],
-];
 
 class ListeAventure extends StatelessWidget {
   final List<dynamic>? adventures;
   const ListeAventure({Key? key, this.adventures}) : super(key: key);
+
+  static const _accents = [
+    kPrimary,
+    Color(0xFF8B5E0A),
+    Color(0xFFB8780C),
+    Color(0xFFA06010),
+    Color(0xFF7A4F08),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +22,9 @@ class ListeAventure extends StatelessWidget {
         decoration: BoxDecoration(
           color: kBgCard,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kEmerald.withOpacity(0.15)),
+          border: Border.all(color: kPrimary.withOpacity(0.18)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+            BoxShadow(color: kText.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: const Row(
@@ -31,10 +32,8 @@ class ListeAventure extends StatelessWidget {
           children: [
             Icon(Icons.map_outlined, color: kTextMid, size: 16),
             SizedBox(width: 8),
-            Text(
-              'Aucune aventure pour le moment',
-              style: TextStyle(color: kTextMid, fontSize: 13),
-            ),
+            Text('Aucune aventure pour le moment',
+                style: TextStyle(color: kTextMid, fontSize: 13)),
           ],
         ),
       );
@@ -47,51 +46,32 @@ class ListeAventure extends StatelessWidget {
         itemCount: adventures!.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
-          final adv  = adventures![i];
-          final grad = _cardGradients[i % _cardGradients.length];
+          // Cast explicite pour satisfaire le type Map<String, dynamic>
+          final adv    = Map<String, dynamic>.from(adventures![i] as Map);
+          final accent = _accents[i % _accents.length];
           return GestureDetector(
-            onTap: () {},
+            onTap: () => AventureDetailPopup.show(context, adventure: adv),
             child: Container(
               width: 168,
               decoration: BoxDecoration(
+                color: kBgCard,
                 borderRadius: BorderRadius.circular(14),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: grad,
-                ),
-                border: Border.all(color: kEmerald.withOpacity(0.2)),
+                border: Border.all(color: accent.withOpacity(0.3)),
                 boxShadow: [
-                  BoxShadow(
-                    color: grad[1].withOpacity(0.4),
-                    blurRadius: 14,
-                    offset: const Offset(0, 5),
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
+                  BoxShadow(color: accent.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 4)),
+                  BoxShadow(color: kText.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2)),
                 ],
               ),
               child: Stack(
                 children: [
-                  // Motif points
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: CustomPaint(painter: _AdventureDotsPainter()),
-                    ),
-                  ),
-                  // Lueur accent
                   Positioned(
-                    top: -20, right: -20,
+                    top: -10, right: -10,
                     child: Container(
-                      width: 80, height: 80,
+                      width: 70, height: 70,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
-                          colors: [kCyan.withOpacity(0.1), Colors.transparent],
+                          colors: [accent.withOpacity(0.08), Colors.transparent],
                         ),
                       ),
                     ),
@@ -102,46 +82,31 @@ class ListeAventure extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
-                            color: kEmerald.withOpacity(0.18),
+                            color: accent.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
-                            border:
-                                Border.all(color: kEmerald.withOpacity(0.3)),
+                            border: Border.all(color: accent.withOpacity(0.3)),
                           ),
-                          child: const Text(
-                            'QUÊTE',
-                            style: TextStyle(
-                              color: kEmerald, fontSize: 9,
-                              fontWeight: FontWeight.w900, letterSpacing: 1.5,
-                            ),
-                          ),
+                          child: Text('QUÊTE',
+                            style: TextStyle(color: accent, fontSize: 9,
+                                fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                         ),
                         const Spacer(),
                         Text(
                           adv["name"] ?? 'Sans nom',
-                          style: const TextStyle(
-                            color: kText, fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
+                          style: const TextStyle(color: kText, fontSize: 15, fontWeight: FontWeight.w800),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Icon(Icons.arrow_forward_ios,
-                                size: 10,
-                                color: kCyan.withOpacity(0.7)),
+                            Icon(Icons.arrow_forward_ios, size: 10, color: accent.withOpacity(0.6)),
                             const SizedBox(width: 4),
-                            Text(
-                              'Voir les détails',
-                              style: TextStyle(
-                                color: kCyan.withOpacity(0.7),
-                                fontSize: 11,
-                              ),
-                            ),
+                            Text('Voir les détails',
+                              style: TextStyle(color: accent.withOpacity(0.7),
+                                  fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ],
@@ -155,19 +120,4 @@ class ListeAventure extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AdventureDotsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = const Color(0xFF2ECC71).withOpacity(0.07);
-    for (double x = 0; x < size.width; x += 16) {
-      for (double y = 0; y < size.height; y += 16) {
-        canvas.drawCircle(Offset(x, y), 1, p);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
 }

@@ -75,6 +75,62 @@ router.get("/running", (req, res) => {
     });
 });
 
+router.post("/", (req, res) => {
+    const { creator_id, name, description, participant_ids } = req.body;
 
+    console.log('body reçu :', req.body);
+
+    if (!creator_id || !name) {
+        return res.status(400).json({ error: "Champs manquants (creator_id, name)" });
+    }
+
+    // 1. Créer l'aventure
+    const insertAdventureSql = `
+        INSERT INTO adventures (name, description, creator_id, created_at, is_running)
+        VALUES (?, ?, ?, NOW(), 1)
+    `;
+
+    db.query(insertAdventureSql, [name, description || null, creator_id], (err, result) => {
+        if (err) return res.status(500).json({ message: err.message });
+
+        const adventure_id = result.insertId;
+
+        // 2. Construire la liste des participants
+        // On part des IDs sélectionnés + le créateur (sans doublons)
+        const allParticipants = [...new Set([creator_id, ...(participant_ids || [])])];
+
+        const insertParticipantsSql = `
+            INSERT INTO adventure_participants (adventure_id, user_id, joined_at)
+            VALUES ?
+        `;
+
+        const values = allParticipants.map(user_id => [adventure_id, user_id, new Date()]);
+
+        db.query(insertParticipantsSql, [values], (err) => {
+            if (err) return res.status(500).json({ message: err.message });
+
+            res.json({
+                success: true,
+                adventure_id,
+                participant_count: allParticipants.length,
+            });
+        });
+    });
+});
+
+router.get("/participants", (req, res) => {
+    const { adventure_id } = req.query;
+    if (!adventure_id) return res.status(400).json({ error: "adventure_id manquant" });
+    const sql = `
+        SELECT u.id, u.username, u.avatar_url AS image
+        FROM adventure_participants ap
+        JOIN users u ON u.id = ap.user_id
+        WHERE ap.adventure_id = ?
+    `;
+    db.query(sql, [adventure_id], (err, results) => {
+        if (err) return res.status(500).json({ message: err.message });
+        res.json(results);
+    });
+});
 
 module.exports = router;

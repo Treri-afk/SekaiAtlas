@@ -93,3 +93,50 @@ Future<Map<String, dynamic>> addFriend(String friendCode, int userId) async {
         throw Exception(error['error'] ?? 'Erreur addFriend : ${response.statusCode}');
     }
 }
+
+Future<Map<String, dynamic>> createAdventure({
+    required int creatorId,
+    required String name,
+    String? description,
+    List<int> participantIds = const [],
+}) async {
+    final response = await http.post(
+        Uri.parse('$baseURL/aventure'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+            'creator_id': creatorId,
+            'name': name,
+            'description': description,
+            'participant_ids': participantIds,
+        }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+    } else {
+        final error = json.decode(response.body);
+        throw Exception(error['error'] ?? 'Erreur createAdventure : ${response.statusCode}');
+    }
+}
+
+
+Future<List<dynamic>> fetchAdventurePhotos(int adventureId) async {
+    final response = await http.get(
+        Uri.parse('$baseURL/photos/adventure?adventure_id=$adventureId'),
+    );
+    if (response.statusCode == 200) {
+        return json.decode(response.body);
+    } else {
+        throw Exception('Erreur fetchAdventurePhotos : ${response.statusCode}');
+    }
+}
+
+Future<List<dynamic>> fetchAdventureParticipants(int adventureId) async {
+    final response = await http.get(
+        Uri.parse('$baseURL/aventure/participants?adventure_id=$adventureId'),
+    );
+    if (response.statusCode == 200) {
+        return json.decode(response.body);
+    } else {
+        throw Exception('Erreur fetchAdventureParticipants : ${response.statusCode}');
+    }
+}

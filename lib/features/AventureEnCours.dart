@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:sekai_atlas/features/CommencerUneNouvelleAventure.dart';
+import 'package:sekai_atlas/features/AventureDetailPopup.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AventureEnCours extends StatefulWidget {
   const AventureEnCours({Key? key}) : super(key: key);
+
   @override
   State<AventureEnCours> createState() => _AventureEnCoursState();
+
+  static _AventureEnCoursState? of(BuildContext context) =>
+      context.findAncestorStateOfType<_AventureEnCoursState>();
 }
 
 class _AventureEnCoursState extends State<AventureEnCours>
@@ -26,10 +31,10 @@ class _AventureEnCoursState extends State<AventureEnCours>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.85, end: 1.15).animate(
+    _pulseAnim = Tween<double>(begin: 0.88, end: 1.12).animate(
       CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeInOut),
     );
-    _load();
+    reload();
   }
 
   @override
@@ -38,7 +43,7 @@ class _AventureEnCoursState extends State<AventureEnCours>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> reload() async {
     try {
       final pid = Supabase.instance.client.auth.currentUser?.id;
       if (pid == null) throw 'Non connecté';
@@ -47,17 +52,17 @@ class _AventureEnCoursState extends State<AventureEnCours>
       final d = await adventureRunning(u["id"]);
       if (!mounted) return;
       setState(() {
-        friend = f;
-        users = d.isNotEmpty ? d[0]["result"]["players"] : [];
+        friend    = f;
+        users     = d.isNotEmpty ? d[0]["result"]["players"] : [];
         adventure = d.isNotEmpty ? d[0]["result"]["adventure"] : null;
-        loading = false;
+        loading   = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        loading = false;
-        users = [];
-        friend = [];
+        loading   = false;
+        users     = [];
+        friend    = [];
         adventure = null;
       });
     }
@@ -70,7 +75,7 @@ class _AventureEnCoursState extends State<AventureEnCours>
         height: 160,
         decoration: _cardDecor(),
         child: const Center(
-          child: CircularProgressIndicator(color: kEmerald, strokeWidth: 2.5),
+          child: CircularProgressIndicator(color: kPrimary, strokeWidth: 2.5),
         ),
       );
     }
@@ -80,245 +85,193 @@ class _AventureEnCoursState extends State<AventureEnCours>
 
   Widget _buildEmpty() {
     return GestureDetector(
-      onTap: () => CommencerUneNouvelleAventureForm.show(context, users: friend),
+      onTap: () => CommencerUneNouvelleAventureForm.show(
+        context,
+        users: friend,
+        onSuccess: () => reload(),
+      ),
       child: Container(
         height: 160,
         decoration: _cardDecor(dashed: true),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: CustomPaint(painter: _DotsPainter()),
-              ),
-            ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_pulseAnim != null)
-                    AnimatedBuilder(
-                      animation: _pulseAnim!,
-                      builder: (_, __) => Transform.scale(
-                        scale: _pulseAnim!.value,
-                        child: Container(
-                          width: 54, height: 54,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: kEmerald.withOpacity(0.1),
-                            border: Border.all(color: kEmerald, width: 1.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: kEmerald.withOpacity(0.3),
-                                blurRadius: 18,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(Icons.add, color: kEmerald, size: 26),
-                        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_pulseAnim != null)
+                AnimatedBuilder(
+                  animation: _pulseAnim!,
+                  builder: (_, __) => Transform.scale(
+                    scale: _pulseAnim!.value,
+                    child: Container(
+                      width: 52, height: 52,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: kPrimary.withOpacity(0.1),
+                        border: Border.all(color: kPrimary, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(color: kPrimary.withOpacity(0.2), blurRadius: 16),
+                        ],
                       ),
-                    ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'COMMENCER UNE AVENTURE',
-                    style: TextStyle(
-                      color: kEmerald, fontSize: 11,
-                      fontWeight: FontWeight.w900, letterSpacing: 2,
+                      child: const Icon(Icons.add, color: kPrimary, size: 26),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Partez à la conquête du monde',
-                    style: TextStyle(color: kTextMid.withOpacity(0.55), fontSize: 12),
-                  ),
-                ],
+                ),
+              const SizedBox(height: 14),
+              const Text(
+                'COMMENCER UNE AVENTURE',
+                style: TextStyle(
+                  color: kPrimary, fontSize: 11,
+                  fontWeight: FontWeight.w900, letterSpacing: 2,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                'Partez à la conquête du monde',
+                style: TextStyle(color: kTextMid.withOpacity(0.7), fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildActive() {
-    return Container(
-      height: 205,
-      decoration: _cardDecor(),
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          // Fond dégradé
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0A3D1A), Color(0xFF0D2B10), Color(0xFF0A1A0C)],
-              ),
-            ),
-          ),
-          // Motif points
-          Positioned.fill(child: CustomPaint(painter: _DotsPainter())),
-          // Lueur accent coin haut droit
-          Positioned(
-            top: -30, right: -30,
-            child: Container(
-              width: 120, height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [kCyan.withOpacity(0.12), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-          // Contenu
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    // Convertit List<dynamic>? en List<dynamic> non-nullable pour le popup
+    final playersList = List<dynamic>.from(users ?? []);
+
+    return GestureDetector(
+      onTap: () => AventureDetailPopup.show(
+        context,
+        adventure: Map<String, dynamic>.from(adventure! as Map),
+        players: playersList,
+      ),
+      child: Container(
+        decoration: _cardDecor(),
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Badge + chevron
+            Row(
               children: [
-                // Badge statut
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: kEmerald.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: kEmerald.withOpacity(0.45)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6, height: 6,
-                            decoration: const BoxDecoration(
-                              color: kGlow,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'EN COURS',
-                            style: TextStyle(
-                              color: kEmerald, fontSize: 10,
-                              fontWeight: FontWeight.w900, letterSpacing: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(Icons.chevron_right, color: kEmerald.withOpacity(0.4), size: 20),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                // Nom aventure
-                Text(
-                  adventure?["name"] ?? 'Aventure',
-                  style: const TextStyle(
-                    color: kText, fontSize: 22,
-                    fontWeight: FontWeight.w900, letterSpacing: 0.3,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kPrimary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: kPrimary.withOpacity(0.35)),
                   ),
-                ),
-                if (adventure?["description"] != null) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    adventure!["description"],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: kTextMid.withOpacity(0.65), fontSize: 13),
-                  ),
-                ],
-                const Spacer(),
-                // Participants + XP
-                Row(
-                  children: [
-                    if (users != null && users!.isNotEmpty) ...[
-                      SizedBox(
-                        height: 30,
-                        width: (users!.length.clamp(0, 5) * 22.0) + 8,
-                        child: Stack(
-                          children: List.generate(
-                            users!.length.clamp(0, 5),
-                            (i) => Positioned(
-                              left: i * 22.0,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: kEmerald, width: 2),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: kEmerald.withOpacity(0.3),
-                                      blurRadius: 6,
-                                    ),
-                                  ],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 13,
-                                  backgroundColor: kBgCard,
-                                  backgroundImage: users![i]["avatar_url"] != null
-                                      ? NetworkImage(users![i]["avatar_url"])
-                                      : null,
-                                  child: users![i]["avatar_url"] == null
-                                      ? const Icon(Icons.person, size: 12, color: kTextMid)
-                                      : null,
-                                ),
-                              ),
-                            ),
-                          ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6, height: 6,
+                        decoration: BoxDecoration(
+                          color: kPrimary,
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.5), blurRadius: 4)],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${users!.length} aventurier${users!.length > 1 ? 's' : ''}',
-                        style: const TextStyle(color: kTextMid, fontSize: 12),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'EN COURS',
+                        style: TextStyle(
+                          color: kPrimary, fontSize: 10,
+                          fontWeight: FontWeight.w900, letterSpacing: 1.5,
+                        ),
                       ),
                     ],
-                    const Spacer(),
-                    // Barre XP
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('XP',
-                          style: TextStyle(color: kTextDim, fontSize: 9,
-                            fontWeight: FontWeight.w800, letterSpacing: 1),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          width: 72, height: 5,
-                          decoration: BoxDecoration(
-                            color: kBgCard2,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: FractionallySizedBox(
-                            widthFactor: 0.6,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(3),
-                                gradient: const LinearGradient(
-                                  colors: [kEmerald, kCyan],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: kEmerald.withOpacity(0.5),
-                                    blurRadius: 4,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: kPrimary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: kPrimary.withOpacity(0.2)),
+                  ),
+                  child: const Icon(Icons.chevron_right, color: kPrimary, size: 18),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 14),
+            // Nom
+            Text(
+              adventure?["name"] ?? 'Aventure',
+              style: const TextStyle(
+                color: kText, fontSize: 20,
+                fontWeight: FontWeight.w900, letterSpacing: 0.3,
+              ),
+            ),
+            // Description
+            if (adventure?["description"] != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                adventure!["description"],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: kTextMid.withOpacity(0.8), fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 16),
+            // Séparateur
+            Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [kPrimary.withOpacity(0.2), Colors.transparent],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // Participants
+            if (users != null && users!.isNotEmpty) ...[
+              Row(
+                children: [
+                  SizedBox(
+                    height: 32,
+                    width: (users!.length.clamp(0, 5) * 16.0) + 20,
+                    child: Stack(
+                      children: List.generate(
+                        users!.length.clamp(0, 5),
+                        (i) => Positioned(
+                          left: i * 16.0,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: kPrimary, width: 2),
+                              boxShadow: [
+                                BoxShadow(color: kPrimary.withOpacity(0.2), blurRadius: 4),
+                              ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: kBgCard2,
+                              backgroundImage: users![i]["image"] != null &&
+                                      users![i]["image"] != ""
+                                  ? NetworkImage(users![i]["image"])
+                                  : null,
+                              child: users![i]["image"] == null || users![i]["image"] == ""
+                                  ? const Icon(Icons.person, size: 13, color: kTextMid)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${users!.length} aventurier${users!.length > 1 ? 's' : ''}',
+                    style: const TextStyle(color: kTextMid, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -328,28 +281,13 @@ class _AventureEnCoursState extends State<AventureEnCours>
       color: kBgCard,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
-        color: dashed ? kEmerald.withOpacity(0.25) : kEmerald.withOpacity(0.18),
+        color: dashed ? kPrimary.withOpacity(0.25) : kPrimary.withOpacity(0.18),
         width: 1.5,
       ),
       boxShadow: [
-        BoxShadow(color: kEmerald.withOpacity(0.07), blurRadius: 20, offset: const Offset(0, 6)),
-        BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4)),
+        BoxShadow(color: kPrimary.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 4)),
+        BoxShadow(color: kText.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2)),
       ],
     );
   }
-}
-
-class _DotsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = const Color(0xFF2ECC71).withOpacity(0.06);
-    for (double x = 0; x < size.width; x += 18) {
-      for (double y = 0; y < size.height; y += 18) {
-        canvas.drawCircle(Offset(x, y), 1, p);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
 }
