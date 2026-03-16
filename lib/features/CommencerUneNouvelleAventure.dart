@@ -9,7 +9,7 @@ class CommencerUneNouvelleAventureForm {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final selected = List<bool>.filled(users?.length ?? 0, false);
-    print(users);
+
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -17,30 +17,50 @@ class CommencerUneNouvelleAventureForm {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) {
 
-          // isLoading local pour afficher un loader sur le bouton
           bool isCreating = false;
+          // IDs des utilisateurs déjà dans une aventure en cours
+          Set<int> alreadyInAdventure = {};
+          bool loadingAdventure = true;
+
+          // Charge les participants de l'aventure en cours au premier build
+          Future<void> loadCurrentAdventureParticipants() async {
+            try {
+              final pid = Supabase.instance.client.auth.currentUser?.id;
+              if (pid == null) return;
+              final u = await fetchUserByProviderId(pid);
+              final running = await adventureRunning(u["id"]);
+              if (running.isNotEmpty) {
+                final players = running[0]["result"]["players"] as List<dynamic>;
+                final ids = players
+                    .map((p) => p["id"] as int)
+                    .toSet();
+                setS(() {
+                  alreadyInAdventure = ids;
+                  loadingAdventure = false;
+                });
+              } else {
+                setS(() => loadingAdventure = false);
+              }
+            } catch (e) {
+              setS(() => loadingAdventure = false);
+            }
+          }
+
+          // Lance le chargement une seule fois
+          if (loadingAdventure) {
+            loadCurrentAdventureParticipants();
+          }
 
           Future<void> handleCreate() async {
-            print('[handleCreate] bouton CRÉER appuyé');
-
-            if (!formKey.currentState!.validate()) {
-              print('[handleCreate] formulaire invalide');
-              return;
-            }
+            if (!formKey.currentState!.validate()) return;
 
             final pid = Supabase.instance.client.auth.currentUser?.id;
-            print('[handleCreate] pid Supabase = $pid');
-            if (pid == null) {
-              print('[handleCreate] pid null, utilisateur non connecté');
-              return;
-            }
+            if (pid == null) return;
 
             setS(() => isCreating = true);
 
             try {
               final connectedUser = await fetchUserByProviderId(pid);
-              print('[handleCreate] connectedUser = $connectedUser');
-
               final creatorId = connectedUser['id'] as int;
 
               final participantIds = <int>[];
@@ -49,10 +69,8 @@ class CommencerUneNouvelleAventureForm {
                   participantIds.add(users![i]['id'] as int);
                 }
               }
-              print('[handleCreate] participantIds = $participantIds');
-              print('[handleCreate] name = ${nameCtrl.text.trim()}');
 
-              final result = await createAdventure(
+              await createAdventure(
                 creatorId: creatorId,
                 name: nameCtrl.text.trim(),
                 description: descCtrl.text.trim().isEmpty
@@ -61,20 +79,12 @@ class CommencerUneNouvelleAventureForm {
                 participantIds: participantIds,
               );
 
-              print('[handleCreate] succès = $result');
-
-              // Notifie AventureEnCours de se rafraîchir
               onSuccess?.call();
-
               if (ctx.mounted) Navigator.pop(ctx);
             } catch (e) {
-              print('[handleCreate] ERREUR : $e');
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(
-                    content: Text('Erreur : $e'),
-                    backgroundColor: kError,
-                  ),
+                  SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
                 );
               }
             } finally {
@@ -92,8 +102,6 @@ class CommencerUneNouvelleAventureForm {
               children: [
                 _Header(
                   onClose: () => Navigator.pop(ctx),
-                  // unawaited intentionnel — VoidCallback ne peut pas être async
-                  // handleCreate gère elle-même les erreurs via try/catch
                   onValidate: () { handleCreate(); },
                   isCreating: isCreating,
                 ),
@@ -124,7 +132,15 @@ class CommencerUneNouvelleAventureForm {
                           const SizedBox(height: 28),
                           _FieldLabel(text: 'RECRUTER DES ALLIÉS'),
                           const SizedBox(height: 12),
-                          if (users == null || users.isEmpty)
+
+                          if (loadingAdventure)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: CircularProgressIndicator(color: kPrimary, strokeWidth: 2),
+                              ),
+                            )
+                          else if (users == null || users.isEmpty)
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -136,10 +152,8 @@ class CommencerUneNouvelleAventureForm {
                                 children: [
                                   Icon(Icons.info_outline, color: kTextDim, size: 16),
                                   const SizedBox(width: 10),
-                                  const Text(
-                                    'Aucun allié disponible',
-                                    style: TextStyle(color: kTextMid, fontSize: 13),
-                                  ),
+                                  const Text('Aucun allié disponible',
+                                    style: TextStyle(color: kTextMid, fontSize: 13)),
                                 ],
                               ),
                             )
@@ -156,67 +170,84 @@ class CommencerUneNouvelleAventureForm {
                               ),
                               itemCount: users.length,
                               itemBuilder: (_, i) {
-                                final user = users[i];
-                                final sel  = selected[i];
+                                final user    = users[i];
+                                final sel     = selected[i];
+                                final userId  = user['id'] as int;
+                                final blocked = alreadyInAdventure.contains(userId);
+
                                 return GestureDetector(
-                                  onTap: () => setS(() => selected[i] = !selected[i]),
-                                  child: Column(
-                                    children: [
-                                      AnimatedContainer(
-                                        duration: const Duration(milliseconds: 200),
-                                        padding: const EdgeInsets.all(2.5),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: sel ? null : kBgCard2,
-                                          gradient: sel
-                                              ? const LinearGradient(
-                                                  colors: [kPrimary, kPrimaryLt])
-                                              : null,
-                                          border: sel
-                                              ? null
-                                              : Border.all(
-                                                  color: kPrimary.withOpacity(0.25),
-                                                  width: 2,
-                                                ),
-                                          boxShadow: sel
-                                              ? [BoxShadow(
-                                                  color: kPrimary.withOpacity(0.4),
-                                                  blurRadius: 12,
-                                                )]
-                                              : [],
+                                  onTap: blocked
+                                      ? null // désactivé si déjà en aventure
+                                      : () => setS(() => selected[i] = !selected[i]),
+                                  child: Opacity(
+                                    opacity: blocked ? 0.4 : 1.0,
+                                    child: Column(
+                                      children: [
+                                        AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          padding: const EdgeInsets.all(2.5),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: blocked
+                                                ? kBgCard2
+                                                : sel ? null : kBgCard2,
+                                            gradient: (!blocked && sel)
+                                                ? const LinearGradient(
+                                                    colors: [kPrimary, kPrimaryLt])
+                                                : null,
+                                            border: (!blocked && sel)
+                                                ? null
+                                                : Border.all(
+                                                    color: blocked
+                                                        ? kTextDim.withOpacity(0.3)
+                                                        : kPrimary.withOpacity(0.25),
+                                                    width: 2,
+                                                  ),
+                                            boxShadow: (!blocked && sel)
+                                                ? [BoxShadow(
+                                                    color: kPrimary.withOpacity(0.4),
+                                                    blurRadius: 12,
+                                                  )]
+                                                : [],
+                                          ),
+                                          child: CircleAvatar(
+                                            radius: 27,
+                                            backgroundColor: kBgCard,
+                                            backgroundImage: user['avatar_url'] != null
+                                                ? NetworkImage(user['avatar_url'])
+                                                : null,
+                                            child: user['avatar_url'] == null
+                                                ? const Icon(Icons.person, color: kTextMid)
+                                                : null,
+                                          ),
                                         ),
-                                        child: CircleAvatar(
-                                          radius: 27,
-                                          backgroundColor: kBgCard,
-                                          backgroundImage: user['avatar_url'] != null
-                                              ? NetworkImage(user['avatar_url'])
-                                              : null,
-                                          child: user['avatar_url'] == null
-                                              ? const Icon(Icons.person, color: kTextMid)
-                                              : null,
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          () {
+                                            final n = user['username'] ?? '';
+                                            return n.length > 8
+                                                ? '${n.substring(0, 7)}…'
+                                                : n;
+                                          }(),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: blocked
+                                                ? kTextDim
+                                                : sel ? kPrimary : kTextMid,
+                                            fontWeight: sel && !blocked
+                                                ? FontWeight.w800
+                                                : FontWeight.normal,
+                                          ),
+                                          textAlign: TextAlign.center,
                                         ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        () {
-                                          final n = user['username'] ?? '';
-                                          return n.length > 8
-                                              ? '${n.substring(0, 7)}…'
-                                              : n;
-                                        }(),
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: sel ? kPrimary : kTextMid,
-                                          fontWeight: sel
-                                              ? FontWeight.w800
-                                              : FontWeight.normal,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      if (sel)
-                                        const Icon(Icons.check_circle,
-                                            size: 13, color: kPrimary),
-                                    ],
+                                        if (blocked)
+                                          const Icon(Icons.lock_outline,
+                                              size: 12, color: kTextDim)
+                                        else if (sel)
+                                          const Icon(Icons.check_circle,
+                                              size: 13, color: kPrimary),
+                                      ],
+                                    ),
                                   ),
                                 );
                               },
