@@ -2,265 +2,262 @@ import 'package:flutter/material.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sekai_atlas/features/AventureNotifier.dart';
 
 class CommencerUneNouvelleAventureForm {
   static void show(BuildContext context, {required List? users, VoidCallback? onSuccess}) {
-    final formKey  = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final selected = List<bool>.filled(users?.length ?? 0, false);
-
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) {
+      builder: (_) => _AventureFormSheet(users: users, onSuccess: onSuccess),
+    );
+  }
+}
 
-          bool isCreating = false;
-          // IDs des utilisateurs déjà dans une aventure en cours
-          Set<int> alreadyInAdventure = {};
-          bool loadingAdventure = true;
+class _AventureFormSheet extends StatefulWidget {
+  final List? users;
+  final VoidCallback? onSuccess;
+  const _AventureFormSheet({this.users, this.onSuccess});
 
-          // Charge les participants de l'aventure en cours au premier build
-          Future<void> loadCurrentAdventureParticipants() async {
-            try {
-              final pid = Supabase.instance.client.auth.currentUser?.id;
-              if (pid == null) return;
-              final u = await fetchUserByProviderId(pid);
-              final running = await adventureRunning(u["id"]);
-              if (running.isNotEmpty) {
-                final players = running[0]["result"]["players"] as List<dynamic>;
-                final ids = players
-                    .map((p) => p["id"] as int)
-                    .toSet();
-                setS(() {
-                  alreadyInAdventure = ids;
-                  loadingAdventure = false;
-                });
-              } else {
-                setS(() => loadingAdventure = false);
-              }
-            } catch (e) {
-              setS(() => loadingAdventure = false);
-            }
-          }
+  @override
+  State<_AventureFormSheet> createState() => _AventureFormSheetState();
+}
 
-          // Lance le chargement une seule fois
-          if (loadingAdventure) {
-            loadCurrentAdventureParticipants();
-          }
+class _AventureFormSheetState extends State<_AventureFormSheet> {
+  final _formKey  = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
 
-          Future<void> handleCreate() async {
-            if (!formKey.currentState!.validate()) return;
+  late final List<bool> _selected;
+  Set<int> _alreadyInAdventure = {};
+  bool _loadingAdventure = true;
+  bool _isCreating       = false;
 
-            final pid = Supabase.instance.client.auth.currentUser?.id;
-            if (pid == null) return;
+  @override
+  void initState() {
+    super.initState();
+    _selected = List<bool>.filled(widget.users?.length ?? 0, false);
+    _loadCurrentAdventureParticipants();
+  }
 
-            setS(() => isCreating = true);
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
 
-            try {
-              final connectedUser = await fetchUserByProviderId(pid);
-              final creatorId = connectedUser['id'] as int;
+  Future<void> _loadCurrentAdventureParticipants() async {
+    try {
+      final pid = Supabase.instance.client.auth.currentUser?.id;
+      if (pid == null) { setState(() => _loadingAdventure = false); return; }
 
-              final participantIds = <int>[];
-              for (int i = 0; i < (users?.length ?? 0); i++) {
-                if (selected[i]) {
-                  participantIds.add(users![i]['id'] as int);
-                }
-              }
+      final u       = await fetchUserByProviderId(pid);
+      final running = await adventureRunning(u["id"]);
 
-              await createAdventure(
-                creatorId: creatorId,
-                name: nameCtrl.text.trim(),
-                description: descCtrl.text.trim().isEmpty
-                    ? null
-                    : descCtrl.text.trim(),
-                participantIds: participantIds,
-              );
+      if (!mounted) return;
 
-              onSuccess?.call();
-              if (ctx.mounted) Navigator.pop(ctx);
-            } catch (e) {
-              if (ctx.mounted) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
-                );
-              }
-            } finally {
-              if (ctx.mounted) setS(() => isCreating = false);
-            }
-          }
+      if (running.isNotEmpty) {
+        final players = running[0]["result"]["players"] as List<dynamic>;
+        setState(() {
+          _alreadyInAdventure = players.map((p) => p["id"] as int).toSet();
+          _loadingAdventure   = false;
+        });
+      } else {
+        setState(() => _loadingAdventure = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingAdventure = false);
+    }
+  }
 
-          return Container(
-            height: MediaQuery.of(ctx).size.height * 0.9,
-            decoration: const BoxDecoration(
-              color: kBg,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                _Header(
-                  onClose: () => Navigator.pop(ctx),
-                  onValidate: () { handleCreate(); },
-                  isCreating: isCreating,
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-                    child: Form(
-                      key: formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _FieldLabel(text: 'NOM DE LA QUÊTE'),
-                          const SizedBox(height: 8),
-                          _RpgField(
-                            ctrl: nameCtrl,
-                            hint: 'Ex : La Forêt des Âmes Perdues',
-                            validator: (v) =>
-                                v == null || v.isEmpty ? 'Champ requis' : null,
-                          ),
-                          const SizedBox(height: 20),
-                          _FieldLabel(text: 'DESCRIPTION'),
-                          const SizedBox(height: 8),
-                          _RpgField(
-                            ctrl: descCtrl,
-                            hint: 'Décrivez votre aventure…',
-                            maxLines: 4,
-                          ),
-                          const SizedBox(height: 28),
-                          _FieldLabel(text: 'RECRUTER DES ALLIÉS'),
-                          const SizedBox(height: 12),
+  Future<void> _handleCreate() async {
+    if (!_formKey.currentState!.validate()) return;
 
-                          if (loadingAdventure)
-                            const Center(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: CircularProgressIndicator(color: kPrimary, strokeWidth: 2),
-                              ),
-                            )
-                          else if (users == null || users.isEmpty)
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: kBgCard,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: kPrimary.withOpacity(0.2)),
-                              ),
-                              child: Row(
+    final pid = Supabase.instance.client.auth.currentUser?.id;
+    if (pid == null) return;
+
+    setState(() => _isCreating = true);
+
+    try {
+      final connectedUser = await fetchUserByProviderId(pid);
+      final creatorId     = connectedUser['id'] as int;
+
+      final participantIds = <int>[];
+      for (int i = 0; i < (widget.users?.length ?? 0); i++) {
+        if (_selected[i]) participantIds.add(widget.users![i]['id'] as int);
+      }
+
+      await createAdventure(
+        creatorId:      creatorId,
+        name:           _nameCtrl.text.trim(),
+        description:    _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+        participantIds: participantIds,
+      );
+
+      // 🔔 Notifie toute l'app
+      AdventureNotifier.instance.notify();
+
+      widget.onSuccess?.call();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCreating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.9,
+      decoration: const BoxDecoration(
+        color: kBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          _Header(
+            onClose:    () => Navigator.pop(context),
+            onValidate: _handleCreate,
+            isCreating: _isCreating,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FieldLabel(text: 'NOM DE LA QUÊTE'),
+                    const SizedBox(height: 8),
+                    _RpgField(
+                      ctrl:      _nameCtrl,
+                      hint:      'Ex : La Forêt des Âmes Perdues',
+                      validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    _FieldLabel(text: 'DESCRIPTION'),
+                    const SizedBox(height: 8),
+                    _RpgField(ctrl: _descCtrl, hint: 'Décrivez votre aventure…', maxLines: 4),
+                    const SizedBox(height: 28),
+                    _FieldLabel(text: 'RECRUTER DES ALLIÉS'),
+                    const SizedBox(height: 12),
+
+                    if (_loadingAdventure)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: CircularProgressIndicator(color: kPrimary, strokeWidth: 2),
+                        ),
+                      )
+                    else if (widget.users == null || widget.users!.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: kBgCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: kPrimary.withOpacity(0.2)),
+                        ),
+                        child: Row(children: [
+                          Icon(Icons.info_outline, color: kTextDim, size: 16),
+                          const SizedBox(width: 10),
+                          const Text('Aucun allié disponible',
+                            style: TextStyle(color: kTextMid, fontSize: 13)),
+                        ]),
+                      )
+                    else
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount:   4,
+                          mainAxisSpacing:  16,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemCount: widget.users!.length,
+                        itemBuilder: (_, i) {
+                          final user    = widget.users![i];
+                          final sel     = _selected[i];
+                          final userId  = user['id'] as int;
+                          final blocked = _alreadyInAdventure.contains(userId);
+
+                          return GestureDetector(
+                            onTap: blocked
+                                ? null
+                                : () => setState(() => _selected[i] = !_selected[i]),
+                            child: Opacity(
+                              opacity: blocked ? 0.4 : 1.0,
+                              child: Column(
                                 children: [
-                                  Icon(Icons.info_outline, color: kTextDim, size: 16),
-                                  const SizedBox(width: 10),
-                                  const Text('Aucun allié disponible',
-                                    style: TextStyle(color: kTextMid, fontSize: 13)),
-                                ],
-                              ),
-                            )
-                          else
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                mainAxisSpacing: 16,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.72,
-                              ),
-                              itemCount: users.length,
-                              itemBuilder: (_, i) {
-                                final user    = users[i];
-                                final sel     = selected[i];
-                                final userId  = user['id'] as int;
-                                final blocked = alreadyInAdventure.contains(userId);
-
-                                return GestureDetector(
-                                  onTap: blocked
-                                      ? null // désactivé si déjà en aventure
-                                      : () => setS(() => selected[i] = !selected[i]),
-                                  child: Opacity(
-                                    opacity: blocked ? 0.4 : 1.0,
-                                    child: Column(
-                                      children: [
-                                        AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          padding: const EdgeInsets.all(2.5),
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: blocked
-                                                ? kBgCard2
-                                                : sel ? null : kBgCard2,
-                                            gradient: (!blocked && sel)
-                                                ? const LinearGradient(
-                                                    colors: [kPrimary, kPrimaryLt])
-                                                : null,
-                                            border: (!blocked && sel)
-                                                ? null
-                                                : Border.all(
-                                                    color: blocked
-                                                        ? kTextDim.withOpacity(0.3)
-                                                        : kPrimary.withOpacity(0.25),
-                                                    width: 2,
-                                                  ),
-                                            boxShadow: (!blocked && sel)
-                                                ? [BoxShadow(
-                                                    color: kPrimary.withOpacity(0.4),
-                                                    blurRadius: 12,
-                                                  )]
-                                                : [],
-                                          ),
-                                          child: CircleAvatar(
-                                            radius: 27,
-                                            backgroundColor: kBgCard,
-                                            backgroundImage: user['avatar_url'] != null
-                                                ? NetworkImage(user['avatar_url'])
-                                                : null,
-                                            child: user['avatar_url'] == null
-                                                ? const Icon(Icons.person, color: kTextMid)
-                                                : null,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          () {
-                                            final n = user['username'] ?? '';
-                                            return n.length > 8
-                                                ? '${n.substring(0, 7)}…'
-                                                : n;
-                                          }(),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: blocked
-                                                ? kTextDim
-                                                : sel ? kPrimary : kTextMid,
-                                            fontWeight: sel && !blocked
-                                                ? FontWeight.w800
-                                                : FontWeight.normal,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        if (blocked)
-                                          const Icon(Icons.lock_outline,
-                                              size: 12, color: kTextDim)
-                                        else if (sel)
-                                          const Icon(Icons.check_circle,
-                                              size: 13, color: kPrimary),
-                                      ],
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.all(2.5),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: blocked ? kBgCard2 : sel ? null : kBgCard2,
+                                      gradient: (!blocked && sel)
+                                          ? const LinearGradient(colors: [kPrimary, kPrimaryLt])
+                                          : null,
+                                      border: (!blocked && sel)
+                                          ? null
+                                          : Border.all(
+                                              color: blocked
+                                                  ? kTextDim.withOpacity(0.3)
+                                                  : kPrimary.withOpacity(0.25),
+                                              width: 2,
+                                            ),
+                                      boxShadow: (!blocked && sel)
+                                          ? [BoxShadow(color: kPrimary.withOpacity(0.4), blurRadius: 12)]
+                                          : [],
+                                    ),
+                                    child: CircleAvatar(
+                                      radius: 27,
+                                      backgroundColor: kBgCard,
+                                      backgroundImage: user['avatar_url'] != null
+                                          ? NetworkImage(user['avatar_url'])
+                                          : null,
+                                      child: user['avatar_url'] == null
+                                          ? const Icon(Icons.person, color: kTextMid)
+                                          : null,
                                     ),
                                   ),
-                                );
-                              },
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    () {
+                                      final n = user['username'] ?? '';
+                                      return n.length > 8 ? '${n.substring(0, 7)}…' : n;
+                                    }(),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color:       blocked ? kTextDim : sel ? kPrimary : kTextMid,
+                                      fontWeight:  sel && !blocked ? FontWeight.w800 : FontWeight.normal,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  if (blocked)
+                                    const Icon(Icons.lock_outline, size: 12, color: kTextDim)
+                                  else if (sel)
+                                    const Icon(Icons.check_circle, size: 13, color: kPrimary),
+                                ],
+                              ),
                             ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -273,11 +270,7 @@ class CommencerUneNouvelleAventureForm {
 class _Header extends StatelessWidget {
   final VoidCallback onClose, onValidate;
   final bool isCreating;
-  const _Header({
-    required this.onClose,
-    required this.onValidate,
-    this.isCreating = false,
-  });
+  const _Header({required this.onClose, required this.onValidate, this.isCreating = false});
 
   @override
   Widget build(BuildContext context) {
@@ -309,8 +302,7 @@ class _Header extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: kPrimary.withOpacity(0.2)),
                   ),
-                  child: Icon(Icons.close, size: 18,
-                      color: kTextMid.withOpacity(0.7)),
+                  child: Icon(Icons.close, size: 18, color: kTextMid.withOpacity(0.7)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -318,10 +310,7 @@ class _Header extends StatelessWidget {
               const SizedBox(width: 8),
               const Text(
                 'NOUVELLE AVENTURE',
-                style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w900,
-                  color: kText, letterSpacing: 1.5,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: kText, letterSpacing: 1.5),
               ),
               const Spacer(),
               GestureDetector(
@@ -337,27 +326,14 @@ class _Header extends StatelessWidget {
                     ),
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: isCreating ? [] : [
-                      BoxShadow(
-                        color: kPrimary.withOpacity(0.45),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3),
-                      ),
+                      BoxShadow(color: kPrimary.withOpacity(0.45), blurRadius: 12, offset: const Offset(0, 3)),
                     ],
                   ),
                   child: isCreating
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'CRÉER',
-                          style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w900,
-                            fontSize: 13, letterSpacing: 1,
-                          ),
-                        ),
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('CRÉER',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
                 ),
               ),
             ],
@@ -380,21 +356,15 @@ class _FieldLabel extends StatelessWidget {
           width: 3, height: 14,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
               colors: [kPrimary, kPrimaryLt],
             ),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w800,
-            color: kTextDim, letterSpacing: 1.5,
-          ),
-        ),
+        Text(text,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kTextDim, letterSpacing: 1.5)),
       ],
     );
   }
@@ -405,45 +375,25 @@ class _RpgField extends StatelessWidget {
   final String hint;
   final int maxLines;
   final String? Function(String?)? validator;
-  const _RpgField({
-    required this.ctrl,
-    required this.hint,
-    this.maxLines = 1,
-    this.validator,
-  });
+  const _RpgField({required this.ctrl, required this.hint, this.maxLines = 1, this.validator});
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: ctrl,
-      maxLines: maxLines,
-      validator: validator,
+      maxLines:   maxLines,
+      validator:  validator,
       style: const TextStyle(color: kText, fontSize: 14),
       decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: kTextMid.withOpacity(0.4), fontSize: 13),
-        filled: true,
-        fillColor: kBgCard,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: maxLines > 1 ? 14 : 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kPrimary, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kError),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kError, width: 1.5),
-        ),
+        hintText:        hint,
+        hintStyle:       TextStyle(color: kTextMid.withOpacity(0.4), fontSize: 13),
+        filled:          true,
+        fillColor:       kBgCard,
+        contentPadding:  EdgeInsets.symmetric(horizontal: 14, vertical: maxLines > 1 ? 14 : 12),
+        border:          OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        focusedBorder:   OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kPrimary, width: 1.5)),
+        errorBorder:     OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kError)),
+        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kError, width: 1.5)),
       ),
     );
   }

@@ -137,27 +137,6 @@ class UserPopup {
               ],
             ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _PopupBtn(
-                    icon: Icons.message_outlined,
-                    label: 'Message',
-                    onTap: () {},
-                    primary: false,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PopupBtn(
-                    icon: Icons.group_add_outlined,
-                    label: 'Inviter',
-                    onTap: () {},
-                    primary: true,
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),

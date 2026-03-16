@@ -1,40 +1,32 @@
-const express = require('express')
-const app = express()
-const port = 3000
+const express = require('express');
+const app     = express();
+const port    = process.env.PORT || 3000;
 
+// ── Sécurité de base ─────────────────────────
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Désactive le header X-Powered-By (cache la techno)
+app.disable('x-powered-by');
 
-const usersRoutes = require("./routes/users");
+// ── Routes ───────────────────────────────────
+app.use('/users',   require('./routes/users'));
+app.use('/friends', require('./routes/friends'));
+app.use('/aventure',require('./routes/aventure'));
+app.use('/photos',  require('./routes/photos'));
+app.use('/poi',     require('./routes/poi'));
+app.use('/badges',  require('./routes/badges'));
 
-app.use("/users", usersRoutes);
+// ── Health check ─────────────────────────────
+app.get('/', (_, res) => res.json({ status: 'ok' }));
 
-const friendsRoutes = require("./routes/friends");
+// ── Erreur 404 globale ────────────────────────
+app.use((_, res) => res.status(404).json({ error: 'Route introuvable' }));
 
-app.use("/friends", friendsRoutes);
+// ── Erreur 500 globale ────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error('[server]', err);
+  res.status(500).json({ error: 'Erreur interne du serveur' });
+});
 
-const aventureRoutes = require("./routes/aventure");
-
-app.use("/aventure", aventureRoutes);
-
-const photosRouter = require('./routes/photos');
-
-app.use('/photos', photosRouter);
-
-const poiRoutes = require('./routes/poi');
-
-app.use('/poi', poiRoutes);
-
-const badgesRoutes = require('./routes/badges');
-
-app.use('/badges', badgesRoutes);
-
-
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-
-app.listen(port, () => {
-  console.log(`app listening on port ${port}`)
-})
+app.listen(port, () => console.log(`✓ API en écoute sur le port ${port}`));
