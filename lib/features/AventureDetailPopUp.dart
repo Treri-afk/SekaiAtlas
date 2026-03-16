@@ -10,6 +10,7 @@ class AventureDetailPopup {
     bool showTerminate = false,
     VoidCallback? onTerminated,
   }) {
+    debugPrint('🎭 [AventureDetailPopup] show → adventure=${adventure["name"]} id=${adventure["id"]} showTerminate=$showTerminate');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -50,17 +51,39 @@ class _PhotoData {
     required this.createdAt,
   });
 
-  factory _PhotoData.fromMap(Map<String, dynamic> m) => _PhotoData(
-    imageUrl:         m['image_url']?.toString()         ?? '',
-    description:      m['description']?.toString(),
-    username:         m['username']?.toString(),
-    avatarUrl:        m['avatar_url']?.toString(),
-    poiName:          m['poi_name']?.toString(),
-    badgeName:        m['badge_name']?.toString(),
-    badgeDescription: m['badge_description']?.toString(),
-    poiRarity:        m['poi_rarity']?.toString(),
-    createdAt:        m['created_at']?.toString()         ?? '',
-  );
+  factory _PhotoData.fromMap(Map<String, dynamic> m) {
+    final badgeNameRaw = m['badge_name']?.toString();
+    final poiNameRaw   = m['poi_name']?.toString();
+
+    debugPrint('🎭 [_PhotoData.fromMap] id=${m["id"]} '
+        'image_url=${m["image_url"]} '
+        'username=${m["username"]} '
+        'poi_name=$poiNameRaw '
+        'badge_name=$badgeNameRaw '
+        'poi_rarity=${m["poi_rarity"]} '
+        'badge_description=${m["badge_description"]}');
+
+    // On considère qu'un badge/POI est présent seulement si la string n'est pas vide
+    final hasBadge = badgeNameRaw != null && badgeNameRaw.isNotEmpty;
+    final hasPoi   = poiNameRaw   != null && poiNameRaw.isNotEmpty;
+
+    if (!hasBadge && m['poi_id'] != null) {
+      debugPrint('⚠️  [_PhotoData.fromMap] photo id=${m["id"]} a un poi_id=${m["poi_id"]} '
+          'mais badge_name est absent/vide — le join POI a peut-être échoué côté API');
+    }
+
+    return _PhotoData(
+      imageUrl:         m['image_url']?.toString()         ?? '',
+      description:      m['description']?.toString(),
+      username:         m['username']?.toString(),
+      avatarUrl:        m['avatar_url']?.toString(),
+      poiName:          hasPoi   ? poiNameRaw   : null,
+      badgeName:        hasBadge ? badgeNameRaw : null,
+      badgeDescription: m['badge_description']?.toString(),
+      poiRarity:        m['poi_rarity']?.toString(),
+      createdAt:        m['created_at']?.toString()         ?? '',
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -92,40 +115,77 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
   @override
   void initState() {
     super.initState();
+    debugPrint('🎭 [_AventureDetailSheet] initState → adventure=${widget.adventure["name"]} id=${widget.adventure["id"]}');
     _loadPhotos();
     if (widget.players != null) {
+      debugPrint('🎭 [_AventureDetailSheet] players fournis directement : ${widget.players!.length}');
       _players        = List<dynamic>.from(widget.players!);
       _loadingPlayers = false;
     } else {
+      debugPrint('🎭 [_AventureDetailSheet] players non fournis → chargement async');
       _loadPlayers();
     }
   }
 
   Future<void> _loadPlayers() async {
+    debugPrint('🎭 [_AventureDetailSheet] _loadPlayers → adventure_id=${widget.adventure["id"]}');
     try {
-      final id           = widget.adventure["id"] as int;
+      final id           = widget.adventure['id'] as int;
       final participants = await fetchAdventureParticipants(id);
+      debugPrint('🎭 [_AventureDetailSheet] _loadPlayers → ${participants.length} participant(s) reçu(s)');
+      for (final p in participants) {
+        debugPrint('🎭 [_AventureDetailSheet]   participant : ${p["username"]} id=${p["id"]}');
+      }
       if (!mounted) return;
       setState(() { _players = participants; _loadingPlayers = false; });
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('🔴 [_AventureDetailSheet] _loadPlayers erreur : $e');
+      debugPrint('🔴 [_AventureDetailSheet] stack : $stack');
       if (!mounted) return;
       setState(() => _loadingPlayers = false);
     }
   }
 
   Future<void> _loadPhotos() async {
+    final id = widget.adventure['id'] as int;
+    debugPrint('🎭 [_AventureDetailSheet] _loadPhotos → adventure_id=$id');
     try {
-      final id     = widget.adventure["id"] as int;
-      final raw    = await fetchAdventurePhotos(id);
+      final raw = await fetchAdventurePhotos(id);
+      debugPrint('🎭 [_AventureDetailSheet] _loadPhotos → ${raw.length} photo(s) brute(s)');
+
       if (!mounted) return;
+
+      int withBadge = 0;
+      int withPoi   = 0;
+      int noImage   = 0;
+
+      final photos = <_PhotoData>[];
+      for (final p in raw) {
+        final imageUrl = p['image_url']?.toString() ?? '';
+        if (imageUrl.isEmpty) {
+          noImage++;
+          debugPrint('🎭 [_AventureDetailSheet] photo id=${p["id"]} ignorée (image_url vide)');
+          continue;
+        }
+        final data = _PhotoData.fromMap(Map<String, dynamic>.from(p));
+        if (data.badgeName != null) withBadge++;
+        if (data.poiName   != null) withPoi++;
+        photos.add(data);
+      }
+
+      debugPrint('🎭 [_AventureDetailSheet] _loadPhotos ✅ '
+          '${photos.length} photos retenues | '
+          'ignorées (sans image): $noImage | '
+          'avec badge: $withBadge | '
+          'avec POI: $withPoi');
+
       setState(() {
-        _photos = raw
-            .where((p) => p["image_url"] != null && p["image_url"] != "")
-            .map<_PhotoData>((p) => _PhotoData.fromMap(Map<String, dynamic>.from(p)))
-            .toList();
+        _photos        = photos;
         _loadingPhotos = false;
       });
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('🔴 [_AventureDetailSheet] _loadPhotos erreur : $e');
+      debugPrint('🔴 [_AventureDetailSheet] stack : $stack');
       if (!mounted) return;
       setState(() => _loadingPhotos = false);
     }
@@ -134,41 +194,39 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
   // ── Helpers stats ──────────────────────────
   int get _joursActifs {
     try {
-      final d = DateTime.parse(widget.adventure["created_at"]);
+      final d = DateTime.parse(widget.adventure['created_at']);
       return DateTime.now().difference(d).inDays + 1;
     } catch (_) { return 0; }
   }
 
   String get _dateDebut {
     try {
-      final d = DateTime.parse(widget.adventure["created_at"]);
+      final d = DateTime.parse(widget.adventure['created_at']);
       return '${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year}';
     } catch (_) { return '—'; }
   }
 
-  /// Nombre de POI distincts visités dans cette aventure
   int get _lieuxVisites {
     final ids = _photos
         .where((p) => p.poiName != null && p.poiName!.isNotEmpty)
         .map((p) => p.poiName!)
         .toSet();
+    debugPrint('🎭 [stats] _lieuxVisites : ${ids.length} lieux distincts');
     return ids.length;
   }
 
-  /// Nombre de photos avec description
   int get _photosAvecDescription =>
       _photos.where((p) => p.description != null && p.description!.isNotEmpty).length;
 
-  /// Nombre de badges distincts débloqués dans cette aventure
   int get _badgesDebloques {
     final badges = _photos
         .where((p) => p.badgeName != null && p.badgeName!.isNotEmpty)
         .map((p) => p.badgeName!)
         .toSet();
+    debugPrint('🎭 [stats] _badgesDebloques : ${badges.length}');
     return badges.length;
   }
 
-  /// Photo la plus récente — date courte
   String get _dernierePhoto {
     if (_photos.isEmpty) return '—';
     try {
@@ -237,11 +295,12 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
 
   // ── Terminate ──────────────────────────────
   void _showTerminateDialog(BuildContext context) {
+    debugPrint('🎭 [_AventureDetailSheet] _showTerminateDialog → ${widget.adventure["name"]}');
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (dialogCtx) => _TerminateDialog(
-        adventureName: widget.adventure["name"] ?? 'cette aventure',
+        adventureName: widget.adventure['name'] ?? 'cette aventure',
         onConfirm: () async {
           Navigator.pop(dialogCtx);
           await _terminateAdventure(context);
@@ -251,16 +310,20 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
   }
 
   Future<void> _terminateAdventure(BuildContext context) async {
+    final id = widget.adventure['id'] as int;
+    debugPrint('🎭 [_AventureDetailSheet] _terminateAdventure → id=$id');
     try {
-      final id = widget.adventure["id"] as int;
       await terminateAdventure(id);
+      debugPrint('🎭 [_AventureDetailSheet] aventure $id terminée ✅');
       if (!mounted) return;
       Navigator.pop(context);
       widget.onTerminated?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aventure terminée ✓'), backgroundColor: kSuccess),
       );
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('🔴 [_AventureDetailSheet] _terminateAdventure erreur : $e');
+      debugPrint('🔴 [_AventureDetailSheet] stack : $stack');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
@@ -292,12 +355,12 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.adventure["name"] ?? 'Aventure',
+                  widget.adventure['name'] ?? 'Aventure',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kText),
                 ),
-                if (widget.adventure["description"] != null &&
-                    widget.adventure["description"].toString().isNotEmpty)
-                  Text(widget.adventure["description"],
+                if (widget.adventure['description'] != null &&
+                    widget.adventure['description'].toString().isNotEmpty)
+                  Text(widget.adventure['description'],
                     style: TextStyle(fontSize: 12, color: kTextMid.withOpacity(0.8)),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
@@ -357,6 +420,8 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
 
   // ── Photos ─────────────────────────────────
   Widget _buildPhotos(BuildContext context) {
+    debugPrint('🎭 [_buildPhotos] _loadingPhotos=$_loadingPhotos photos=${_photos.length}');
+
     if (_loadingPhotos) {
       return Container(
         height: 220,
@@ -368,20 +433,33 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     if (_photos.isEmpty) {
       return const _RpgEmptyState(label: "Aucune photo postée pour l'instant");
     }
+
     return SizedBox(
       height: 220,
       child: PageView.builder(
         controller: PageController(viewportFraction: 0.82),
         itemCount: _photos.length,
+        onPageChanged: (i) {
+          final photo = _photos[i];
+          debugPrint('🎭 [_buildPhotos] page $i → badge=${photo.badgeName} poi=${photo.poiName}');
+        },
         itemBuilder: (ctx, i) {
           final photo = _photos[i];
+          debugPrint('🎭 [_buildPhotos] build item $i → '
+              'imageUrl=${photo.imageUrl} '
+              'badgeName=${photo.badgeName} '
+              'poiRarity=${photo.poiRarity}');
+
           return GestureDetector(
-            onTap: () => Navigator.of(context).push(PageRouteBuilder(
-              opaque: false,
-              barrierColor: Colors.black87,
-              pageBuilder: (_, __, ___) => _FullScreenViewer(photos: _photos, initialIndex: i),
-              transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-            )),
+            onTap: () {
+              debugPrint('🎭 [_buildPhotos] tap photo $i → ouverture fullscreen viewer');
+              Navigator.of(context).push(PageRouteBuilder(
+                opaque: false,
+                barrierColor: Colors.black87,
+                pageBuilder: (_, __, ___) => _FullScreenViewer(photos: _photos, initialIndex: i),
+                transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+              ));
+            },
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 6),
               decoration: BoxDecoration(
@@ -400,14 +478,15 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Image
                     Image.network(photo.imageUrl, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: kBgCard2,
-                        child: const Center(child: Icon(Icons.broken_image_outlined, color: kTextMid, size: 32)),
-                      ),
+                      errorBuilder: (_, err, ___) {
+                        debugPrint('🔴 [_buildPhotos] erreur image $i : $err url=${photo.imageUrl}');
+                        return Container(
+                          color: kBgCard2,
+                          child: const Center(child: Icon(Icons.broken_image_outlined, color: kTextMid, size: 32)),
+                        );
+                      },
                     ),
-                    // Gradient bas
                     Positioned(
                       bottom: 0, left: 0, right: 0,
                       child: Container(
@@ -422,7 +501,6 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Badge POI si présent
                             if (photo.badgeName != null) ...[
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -444,7 +522,6 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
                               ),
                               const SizedBox(height: 4),
                             ],
-                            // Description courte
                             if (photo.description != null && photo.description!.isNotEmpty)
                               Text(
                                 photo.description!,
@@ -452,7 +529,6 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            // Username
                             if (photo.username != null) ...[
                               const SizedBox(height: 4),
                               Row(children: [
@@ -466,7 +542,6 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
                         ),
                       ),
                     ),
-                    // Icône fullscreen
                     Positioned(
                       top: 8, right: 8,
                       child: Container(
@@ -487,6 +562,8 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
 
   // ── Players ────────────────────────────────
   Widget _buildPlayers() {
+    debugPrint('🎭 [_buildPlayers] _loadingPlayers=$_loadingPlayers players=${_players.length}');
+
     if (_loadingPlayers) {
       return Container(
         height: 88,
@@ -506,7 +583,8 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
         separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (_, i) {
           final p   = _players[i];
-          final img = p["image"];
+          final img = p['image'];
+          debugPrint('🎭 [_buildPlayers] participant $i : ${p["username"]} avatar=$img');
           return Column(children: [
             Container(
               padding: const EdgeInsets.all(2.5),
@@ -525,7 +603,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
             const SizedBox(height: 5),
             SizedBox(
               width: 64,
-              child: Text(p["username"] ?? '',
+              child: Text(p['username'] ?? '',
                 textAlign: TextAlign.center, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11, color: kTextMid, fontWeight: FontWeight.w600)),
             ),
@@ -551,6 +629,9 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
             ? (_photos.length / _players.length).toStringAsFixed(1)
             : '—'),
     ];
+
+    debugPrint('🎭 [_buildStats] photos=${_photos.length} players=${_players.length} '
+        'lieux=$_lieuxVisites badges=$_badgesDebloques described=$_photosAvecDescription');
 
     return GridView.builder(
       shrinkWrap: true,
@@ -622,7 +703,7 @@ class _TerminateDialog extends StatelessWidget {
             Text(
               'Voulez-vous vraiment terminer "$adventureName" ? Cette action est irréversible.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: kTextMid, height: 1.4),
+              style: const TextStyle(fontSize: 13, color: kTextMid, height: 1.4),
             ),
             const SizedBox(height: 24),
             Container(height: 1, color: kBorder),
@@ -687,6 +768,7 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
     super.initState();
     _current = widget.initialIndex;
     _ctrl    = PageController(initialPage: widget.initialIndex);
+    debugPrint('🖼️  [_FullScreenViewer] initState → index=$_current / ${widget.photos.length}');
   }
 
   @override
@@ -710,6 +792,8 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_current];
+    debugPrint('🖼️  [_FullScreenViewer] build → index=$_current '
+        'badge=${photo.badgeName} poi=${photo.poiName} rarity=${photo.poiRarity}');
 
     return Scaffold(
       backgroundColor: Colors.black87,
@@ -721,13 +805,23 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
             PageView.builder(
               controller: _ctrl,
               itemCount: widget.photos.length,
-              onPageChanged: (i) => setState(() => _current = i),
+              onPageChanged: (i) {
+                setState(() => _current = i);
+                final p = widget.photos[i];
+                debugPrint('🖼️  [_FullScreenViewer] page changée → $i '
+                    'badge=${p.badgeName} poi=${p.poiName}');
+              },
               itemBuilder: (_, i) => InteractiveViewer(
                 minScale: 0.5, maxScale: 4.0,
                 child: Center(
                   child: Image.network(widget.photos[i].imageUrl, fit: BoxFit.contain,
                     loadingBuilder: (_, child, p) => p == null ? child
-                        : const Center(child: CircularProgressIndicator(color: kPrimary))),
+                        : const Center(child: CircularProgressIndicator(color: kPrimary)),
+                    errorBuilder: (_, err, ___) {
+                      debugPrint('🔴 [_FullScreenViewer] erreur image $i : $err url=${widget.photos[i].imageUrl}');
+                      return const Center(child: Icon(Icons.broken_image_outlined, color: kTextMid, size: 48));
+                    },
+                  ),
                 ),
               ),
             ),
@@ -787,6 +881,12 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
                     children: [
                       // Badge POI
                       if (photo.badgeName != null) ...[
+                        Builder(builder: (_) {
+                          debugPrint('🖼️  [_FullScreenViewer] affichage badge → '
+                              'badge=${photo.badgeName} desc=${photo.badgeDescription} '
+                              'rarity=${photo.poiRarity}');
+                          return const SizedBox.shrink();
+                        }),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
@@ -810,6 +910,11 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
                           ]),
                         ),
                         const SizedBox(height: 10),
+                      ] else ...[
+                        Builder(builder: (_) {
+                          debugPrint('🖼️  [_FullScreenViewer] ℹ️  pas de badge (poi=${photo.poiName})');
+                          return const SizedBox.shrink();
+                        }),
                       ],
 
                       // Nom du POI
@@ -857,7 +962,6 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
                 ),
               ),
 
-            // ── Indicateur tap pour masquer infos ──
             if (!_showInfo)
               const Positioned(
                 bottom: 24, left: 0, right: 0,

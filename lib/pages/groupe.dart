@@ -4,6 +4,7 @@ import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
 import 'package:sekai_atlas/features/AventureNotifier.dart';
+import 'package:sekai_atlas/features/FriendNotifier.dart';        // ← nouveau
 import 'package:sekai_atlas/pages/parametrePage.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,41 +25,68 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    // Se recharge automatiquement sur toute création / suppression d'aventure
+    debugPrint('🏠 [GroupePage] initState — abonnement AdventureNotifier + FriendNotifier');
     AdventureNotifier.instance.addListener(_load);
+    FriendNotifier.instance.addListener(_load);   // ← écoute les ajouts d'amis
     _load();
   }
 
   @override
   void dispose() {
+    debugPrint('🏠 [GroupePage] dispose — désabonnement');
     AdventureNotifier.instance.removeListener(_load);
+    FriendNotifier.instance.removeListener(_load); // ← nettoyage
     super.dispose();
   }
 
   Future<void> _load() async {
-    try {
-      final pid = Supabase.instance.client.auth.currentUser?.id;
-      if (pid == null) throw 'Non connecté';
-      final u = await fetchUserByProviderId(pid);
-      final f = await fetchFriends(u["id"]);
-      final a = await fetchAdventure(u["id"]);
-      if (!mounted) return;
-      setState(() {
-        actualUser = u;
-        friends    = f;
-        adventures = a;
-        isLoading  = false;
-      });
-    } catch (e) {
-      debugPrint('Erreur: $e');
+    debugPrint('🏠 [GroupePage] _load — début');
+    final pid = Supabase.instance.client.auth.currentUser?.id;
+    if (pid == null) {
+      debugPrint('🔴 [GroupePage] _load — pas d\'utilisateur connecté');
       if (mounted) setState(() => isLoading = false);
+      return;
     }
+
+    // 1. Récupère l'utilisateur — bloquant
+    Map<String, dynamic> u;
+    try {
+      u = await fetchUserByProviderId(pid);
+      debugPrint('🏠 [GroupePage] user chargé → id=${u["id"]} username=${u["username"]}');
+    } catch (e) {
+      debugPrint('🔴 [GroupePage] erreur fetchUser : $e');
+      if (mounted) setState(() => isLoading = false);
+      return;
+    }
+
+    // 2. Friends & adventures en parallèle
+    debugPrint('🏠 [GroupePage] chargement friends + adventures en parallèle');
+    final results = await Future.wait([
+      fetchFriends(u["id"]).catchError((e) {
+        debugPrint('🔴 [GroupePage] erreur fetchFriends : $e');
+        return <dynamic>[];
+      }),
+      fetchAdventure(u["id"]).catchError((e) {
+        debugPrint('🔴 [GroupePage] erreur fetchAdventure : $e');
+        return <dynamic>[];
+      }),
+    ]);
+
+    if (!mounted) return;
+
+    debugPrint('🏠 [GroupePage] _load ✅ — ${results[0].length} ami(s) / ${results[1].length} aventure(s)');
+    setState(() {
+      actualUser = u;
+      friends    = results[0];
+      adventures = results[1];
+      isLoading  = false;
+    });
   }
 
   void _showBadgesModal(BuildContext context) async {
     final userId = actualUser["id"] as int?;
     if (userId == null) return;
-
+    debugPrint('🏠 [GroupePage] ouverture modal badges userId=$userId');
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -92,7 +120,8 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                       child: _GlowButton(
                         icon: Icons.settings_outlined,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => ParametresPage(user: actualUser)),
+                          MaterialPageRoute(
+                              builder: (_) => ParametresPage(user: actualUser)),
                         ),
                         color: kTextMid,
                       ),
@@ -121,8 +150,6 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                     delegate: SliverChildListDelegate([
                       const _SectionLabel(title: 'Aventure en cours', sub: 'quête active'),
                       const SizedBox(height: 12),
-                      // Plus de callbacks à passer — AventureEnCours écoute
-                      // AdventureNotifier directement
                       const AventureEnCours(),
                       const SizedBox(height: 32),
                       _SectionLabel(title: 'Mes aventures', sub: '${adventures.length} quêtes'),
@@ -182,10 +209,12 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                   child: CircleAvatar(
                     radius: 36,
                     backgroundColor: kBgCard2,
-                    backgroundImage: actualUser["avatar_url"] != null
+                    backgroundImage: actualUser["avatar_url"] != null &&
+                            actualUser["avatar_url"].toString().isNotEmpty
                         ? NetworkImage(actualUser["avatar_url"])
                         : null,
-                    child: actualUser["avatar_url"] == null
+                    child: actualUser["avatar_url"] == null ||
+                            actualUser["avatar_url"].toString().isEmpty
                         ? const Icon(Icons.person, color: kTextMid, size: 32)
                         : null,
                   ),
@@ -196,18 +225,22 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        actualUser["username"] ?? 'Aventurier',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: kText,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
+                      Builder(builder: (context) {
+                        debugPrint('🏠 [GroupePage] header rebuild — username=${actualUser["username"]}');
+                        return Text(
+                          actualUser["username"]?.toString() ?? 'Aventurier',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: kText,
+                            letterSpacing: 0.4,
+                          ),
+                        );
+                      }),
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
                           color: kPrimary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -215,10 +248,10 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.auto_awesome, size: 11, color: kPrimary),
-                            const SizedBox(width: 5),
-                            const Text(
+                          children: const [
+                            Icon(Icons.auto_awesome, size: 11, color: kPrimary),
+                            SizedBox(width: 5),
+                            Text(
                               'Membre de la guilde',
                               style: TextStyle(
                                 fontSize: 11,
@@ -230,21 +263,19 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _MiniStat(
-                            icon: Icons.shield,
-                            value: '${friends.length}',
-                            label: 'alliés',
-                          ),
-                          const SizedBox(width: 8),
-                          _MiniStat(
-                            icon: Icons.map,
-                            value: '${adventures.length}',
-                            label: 'quêtes',
-                          ),
-                        ],
-                      ),
+                      Row(children: [
+                        _MiniStat(
+                          icon: Icons.shield,
+                          value: '${friends.length}',
+                          label: 'alliés',
+                        ),
+                        const SizedBox(width: 8),
+                        _MiniStat(
+                          icon: Icons.map,
+                          value: '${adventures.length}',
+                          label: 'quêtes',
+                        ),
+                      ]),
                     ],
                   ),
                 ),
@@ -258,7 +289,7 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────
-//  WIDGETS INTERNES
+//  WIDGETS INTERNES (inchangés)
 // ─────────────────────────────────────────────
 
 class _GlowButton extends StatelessWidget {
@@ -278,11 +309,7 @@ class _GlowButton extends StatelessWidget {
           color: c,
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
-            BoxShadow(
-              color: c.withOpacity(0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
+            BoxShadow(color: c.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 3)),
           ],
         ),
         child: Icon(icon, color: Colors.white, size: 20),
@@ -303,19 +330,13 @@ class _SectionLabel extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
+            Text(title,
               style: const TextStyle(
                 color: kText, fontSize: 15,
-                fontWeight: FontWeight.w800, letterSpacing: 0.3,
-              ),
-            ),
-            Text(
-              sub,
+                fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+            Text(sub,
               style: const TextStyle(
-                color: kTextDim, fontSize: 11, letterSpacing: 0.8,
-              ),
-            ),
+                color: kTextDim, fontSize: 11, letterSpacing: 0.8)),
           ],
         ),
         const SizedBox(width: 12),
@@ -324,9 +345,7 @@ class _SectionLabel extends StatelessWidget {
             height: 1,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [kPrimary.withOpacity(0.35), Colors.transparent],
-              ),
-            ),
+                colors: [kPrimary.withOpacity(0.35), Colors.transparent])),
           ),
         ),
       ],
@@ -353,12 +372,9 @@ class _MiniStat extends StatelessWidget {
         children: [
           Icon(icon, size: 11, color: kPrimary),
           const SizedBox(width: 4),
-          Text(
-            '$value $label',
+          Text('$value $label',
             style: const TextStyle(
-              fontSize: 11, color: kTextMid, fontWeight: FontWeight.w600,
-            ),
-          ),
+              fontSize: 11, color: kTextMid, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -379,26 +395,20 @@ class _RpgDivider extends StatelessWidget {
               height: 1,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.transparent, kPrimary.withOpacity(0.3)],
-                ),
-              ),
+                  colors: [Colors.transparent, kPrimary.withOpacity(0.3)])),
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Text(
-              '✦',
-              style: TextStyle(color: kPrimary.withOpacity(0.5), fontSize: 14),
-            ),
+            child: Text('✦',
+              style: TextStyle(color: kPrimary.withOpacity(0.5), fontSize: 14)),
           ),
           Expanded(
             child: Container(
               height: 1,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [kPrimary.withOpacity(0.3), Colors.transparent],
-                ),
-              ),
+                  colors: [kPrimary.withOpacity(0.3), Colors.transparent])),
             ),
           ),
         ],
@@ -413,12 +423,10 @@ class _GeometricDecor extends StatelessWidget {
   const _GeometricDecor({required this.size, required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _HexPainter(color: color),
-    );
-  }
+  Widget build(BuildContext context) => CustomPaint(
+    size: Size(size, size),
+    painter: _HexPainter(color: color),
+  );
 }
 
 class _HexPainter extends CustomPainter {
@@ -471,7 +479,7 @@ class _HexPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────
-//  BADGES MODAL
+//  BADGES MODAL (inchangé)
 // ─────────────────────────────────────────────
 
 class _BadgesModal extends StatefulWidget {
@@ -493,10 +501,13 @@ class _BadgesModalState extends State<_BadgesModal> {
   }
 
   Future<void> _load() async {
+    debugPrint('🏅 [_BadgesModal] chargement badges userId=${widget.userId}');
     try {
       final badges = await fetchUserBadges(widget.userId);
+      debugPrint('🏅 [_BadgesModal] ${badges.length} badge(s) reçu(s)');
       if (mounted) setState(() { _badges = badges; _loading = false; });
     } catch (e) {
+      debugPrint('🔴 [_BadgesModal] erreur : $e');
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -527,7 +538,6 @@ class _BadgesModalState extends State<_BadgesModal> {
       ),
       child: Column(
         children: [
-          // Handle
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 8),
             child: Center(
@@ -535,12 +545,10 @@ class _BadgesModalState extends State<_BadgesModal> {
                 width: 40, height: 4,
                 decoration: BoxDecoration(
                   color: kPrimary.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                  borderRadius: BorderRadius.circular(2)),
               ),
             ),
           ),
-          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Row(
@@ -561,7 +569,9 @@ class _BadgesModalState extends State<_BadgesModal> {
                     const Text('Mes badges',
                       style: TextStyle(
                         color: kText, fontSize: 18, fontWeight: FontWeight.w800)),
-                    Text('${_badges.length} badge${_badges.length > 1 ? 's' : ''} débloqué${_badges.length > 1 ? 's' : ''}',
+                    Text(
+                      '${_badges.length} badge${_badges.length > 1 ? "s" : ""} '
+                      'débloqué${_badges.length > 1 ? "s" : ""}',
                       style: const TextStyle(color: kTextDim, fontSize: 12)),
                   ],
                 ),
@@ -569,7 +579,6 @@ class _BadgesModalState extends State<_BadgesModal> {
             ),
           ),
           const Divider(height: 1, color: kBorder),
-          // Liste
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: kPrimary))
@@ -578,12 +587,14 @@ class _BadgesModalState extends State<_BadgesModal> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.explore_off_outlined, color: kTextDim, size: 48),
+                            Icon(Icons.explore_off_outlined,
+                                color: kTextDim, size: 48),
                             const SizedBox(height: 12),
                             const Text('Aucun badge pour l\'instant',
                               style: TextStyle(color: kTextMid, fontSize: 14)),
                             const SizedBox(height: 6),
-                            const Text('Prends des photos près des POI pour en débloquer !',
+                            const Text(
+                              'Prends des photos près des POI pour en débloquer !',
                               style: TextStyle(color: kTextDim, fontSize: 12),
                               textAlign: TextAlign.center),
                           ],
@@ -591,11 +602,12 @@ class _BadgesModalState extends State<_BadgesModal> {
                       )
                     : ListView.builder(
                         padding: EdgeInsets.fromLTRB(
-                          16, 12, 16, MediaQuery.of(context).padding.bottom + 16),
+                          16, 12, 16,
+                          MediaQuery.of(context).padding.bottom + 16),
                         itemCount: _badges.length,
                         itemBuilder: (_, i) {
-                          final b = _badges[i];
-                          final rarity = b['rarity']?.toString();
+                          final b      = _badges[i];
+                          final rarity = b['rarity']?.toString() ?? b['poi_rarity']?.toString();
                           final color  = _rarityColor(rarity);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
@@ -603,7 +615,8 @@ class _BadgesModalState extends State<_BadgesModal> {
                             decoration: BoxDecoration(
                               color: kBgCard,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+                              border: Border.all(
+                                color: color.withOpacity(0.3), width: 1.5),
                             ),
                             child: Row(
                               children: [
@@ -615,7 +628,7 @@ class _BadgesModalState extends State<_BadgesModal> {
                                     border: Border.all(color: color.withOpacity(0.4)),
                                   ),
                                   child: Icon(Icons.emoji_events,
-                                    color: color, size: 24),
+                                      color: color, size: 24),
                                 ),
                                 const SizedBox(width: 14),
                                 Expanded(
@@ -635,11 +648,12 @@ class _BadgesModalState extends State<_BadgesModal> {
                                         ),
                                         Container(
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 3),
+                                              horizontal: 8, vertical: 3),
                                           decoration: BoxDecoration(
                                             color: color.withOpacity(0.1),
                                             borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(color: color.withOpacity(0.35)),
+                                            border: Border.all(
+                                                color: color.withOpacity(0.35)),
                                           ),
                                           child: Text(
                                             _rarityLabel(rarity),
@@ -656,19 +670,18 @@ class _BadgesModalState extends State<_BadgesModal> {
                                         Text(
                                           b['badge_description'].toString(),
                                           style: const TextStyle(
-                                            color: kTextMid, fontSize: 12, height: 1.4),
-                                        ),
+                                            color: kTextMid,
+                                            fontSize: 12, height: 1.4)),
                                       ],
                                       const SizedBox(height: 6),
                                       Row(children: [
                                         const Icon(Icons.place_outlined,
-                                          color: kTextDim, size: 11),
+                                            color: kTextDim, size: 11),
                                         const SizedBox(width: 4),
                                         Text(
                                           b['name']?.toString() ?? '',
                                           style: const TextStyle(
-                                            color: kTextDim, fontSize: 11),
-                                        ),
+                                              color: kTextDim, fontSize: 11)),
                                       ]),
                                     ],
                                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sekai_atlas/features/FriendNotifier.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,23 +18,41 @@ class _FriendCodeFieldState extends State<FriendCodeField> {
   Future<void> _send() async {
     final code = _ctrl.text.trim();
     if (code.isEmpty) return;
+
+    debugPrint('👥 [FriendCodeField] tentative ajout ami code=$code');
     setState(() { _loading = true; _hasError = false; });
+
     try {
       final pid = Supabase.instance.client.auth.currentUser?.id;
       if (pid == null) throw Exception('Non connecté');
+
+      debugPrint('👥 [FriendCodeField] récupération user providerId=$pid');
       final u = await fetchUserByProviderId(pid);
-      await addFriend(code, u["id"]);
+      debugPrint('👥 [FriendCodeField] user trouvé id=${u["id"]} username=${u["username"]}');
+
+      debugPrint('👥 [FriendCodeField] appel addFriend code=$code userId=${u["id"]}');
+      final result = await addFriend(code, u["id"]);
+      debugPrint('👥 [FriendCodeField] addFriend résultat=$result');
+
       if (!mounted) return;
       setState(() { _sent = true; _loading = false; });
       _ctrl.clear();
+
+      // ── Notifie GroupePage de se recharger ──────────────────────────
+      debugPrint('👥 [FriendCodeField] ✅ ami ajouté → notification FriendNotifier');
+      FriendNotifier.instance.notify();
+      // ───────────────────────────────────────────────────────────────
+
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _sent = false);
+
     } catch (e) {
+      debugPrint('🔴 [FriendCodeField] erreur addFriend : $e');
       if (!mounted) return;
       setState(() {
-        _loading = false;
+        _loading  = false;
         _hasError = true;
-        _errMsg = e.toString().replaceAll('Exception: ', '');
+        _errMsg   = e.toString().replaceAll('Exception: ', '');
       });
     }
   }
@@ -71,8 +90,7 @@ class _FriendCodeFieldState extends State<FriendCodeField> {
                   onSubmitted: (_) => _send(),
                   decoration: InputDecoration(
                     hintText: 'Code aventurier…',
-                    hintStyle:
-                        TextStyle(color: kTextMid.withOpacity(0.4)),
+                    hintStyle: TextStyle(color: kTextMid.withOpacity(0.4)),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 12,
@@ -95,8 +113,7 @@ class _FriendCodeFieldState extends State<FriendCodeField> {
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: (_sent ? Colors.green : kEmerald)
-                            .withOpacity(0.5),
+                        color: (_sent ? Colors.green : kEmerald).withOpacity(0.5),
                         blurRadius: 10,
                       ),
                     ],
@@ -112,11 +129,9 @@ class _FriendCodeFieldState extends State<FriendCodeField> {
                           duration: const Duration(milliseconds: 200),
                           child: _sent
                               ? const Icon(Icons.check,
-                                  key: ValueKey('c'),
-                                  color: kBg, size: 20)
+                                  key: ValueKey('c'), color: kBg, size: 20)
                               : const Icon(Icons.send,
-                                  key: ValueKey('s'),
-                                  color: kBg, size: 18),
+                                  key: ValueKey('s'), color: kBg, size: 18),
                         ),
                 ),
               ),
@@ -128,8 +143,7 @@ class _FriendCodeFieldState extends State<FriendCodeField> {
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Row(
               children: [
-                const Icon(Icons.error_outline,
-                    size: 12, color: Colors.red),
+                const Icon(Icons.error_outline, size: 12, color: Colors.red),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(

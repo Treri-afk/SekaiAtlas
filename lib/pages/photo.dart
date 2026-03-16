@@ -17,7 +17,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 
 // ─────────────────────────────────────────────
-//  TAKE PICTURE SCREEN
+//  TAKE PICTURE SCREEN  (inchangé)
 // ─────────────────────────────────────────────
 class TakePictureScreen extends StatefulWidget {
   final VoidCallback? onAdventureCreated;
@@ -95,30 +95,41 @@ class TakePictureScreenState extends State<TakePictureScreen>
   }
 
   Future<void> _requestLocationPermission() async {
+    debugPrint('📍 [GPS] _requestLocationPermission — start');
     try {
       LocationPermission perm = await Geolocator.checkPermission();
+      debugPrint('📍 [GPS] permission actuelle : $perm');
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
-        debugPrint('[GPS] permission demandée : $perm');
-      } else {
-        debugPrint('[GPS] permission existante : $perm');
+        debugPrint('📍 [GPS] permission après demande : $perm');
+      }
+      if (perm == LocationPermission.deniedForever) {
+        debugPrint('🔴 [GPS] permission refusée définitivement');
       }
     } catch (e) {
-      debugPrint('[GPS] erreur permission : $e');
+      debugPrint('🔴 [GPS] erreur permission : $e');
     }
   }
 
   Future<void> _checkAdventure() async {
+    debugPrint('🟦 [camera] _checkAdventure — start');
     try {
       final pid = Supabase.instance.client.auth.currentUser?.id;
+      debugPrint('🟦 [camera] pid = $pid');
       if (pid == null) { setState(() => _checkingAdventure = false); return; }
+
       final u = await fetchUserByProviderId(pid);
+      debugPrint('🟦 [camera] user = id=${u["id"]} username=${u["username"]}');
+
       final results = await Future.wait([
         adventureRunning(u["id"]),
         fetchFriends(u["id"]),
       ]);
       final d = results[0] as List<dynamic>;
       final f = results[1] as List<dynamic>;
+      debugPrint('🟦 [camera] adventureRunning réponse: $d');
+      debugPrint('🟦 [camera] friends count: ${f.length}');
+
       if (!mounted) return;
       setState(() {
         _currentUserId    = u["id"] as int?;
@@ -128,8 +139,10 @@ class TakePictureScreenState extends State<TakePictureScreen>
         _friends          = f;
         _checkingAdventure = false;
       });
+      debugPrint('🟦 [camera] _currentAdventure = $_currentAdventure');
+      debugPrint('🟦 [camera] _currentUserId = $_currentUserId');
     } catch (e) {
-      debugPrint('[photo] _checkAdventure error: $e');
+      debugPrint('🔴 [camera] _checkAdventure error: $e');
       if (!mounted) return;
       setState(() => _checkingAdventure = false);
     }
@@ -200,6 +213,7 @@ class TakePictureScreenState extends State<TakePictureScreen>
     try {
       await _initializeControllerFuture;
       final image = await _controller!.takePicture();
+      debugPrint('📸 [camera] photo prise : ${image.path}');
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => DisplayPictureScreen(
@@ -209,7 +223,7 @@ class TakePictureScreenState extends State<TakePictureScreen>
         )),
       );
     } catch (e) {
-      debugPrint('Error: $e');
+      debugPrint('🔴 [camera] _takePicture error: $e');
     }
   }
 
@@ -495,14 +509,20 @@ class DisplayPictureScreen extends StatefulWidget {
   State<DisplayPictureScreen> createState() => _DisplayPictureScreenState();
 }
 
+// ── Enum pour l'état GPS ──────────────────────
+enum _GpsState { loading, ready, failed }
+
 class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   late String _currentPath;
-  int    _selectedFilter  = 0;
-  bool   _isUploading     = false;
-  double _uploadProgress  = 0.0;
-  String _uploadStatus    = '';
-  double? _latitude;
-  double? _longitude;
+  int    _selectedFilter = 0;
+  bool   _isUploading    = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatus   = '';
+
+  // GPS — on distingue 3 états clairement
+  _GpsState _gpsState = _GpsState.loading;
+  double?   _latitude;
+  double?   _longitude;
 
   final TextEditingController _captionController = TextEditingController();
 
@@ -520,44 +540,85 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   void initState() {
     super.initState();
     _currentPath = widget.imagePath;
+    debugPrint('📸 [display] initState — adventureId=${widget.adventureId} userId=${widget.userId}');
     _fetchLocation();
   }
 
   @override
-  void dispose() { _captionController.dispose(); super.dispose(); }
+  void dispose() {
+    _captionController.dispose();
+    super.dispose();
+  }
+
+  // ── GPS ──────────────────────────────────────────────────────────────────
 
   Future<void> _fetchLocation() async {
+    debugPrint('📍 [GPS] _fetchLocation — start');
     try {
       LocationPermission perm = await Geolocator.checkPermission();
+      debugPrint('📍 [GPS] permission = $perm');
+
+      if (perm == LocationPermission.deniedForever) {
+        debugPrint('🔴 [GPS] permission refusée définitivement → gpsState=failed');
+        if (mounted) setState(() => _gpsState = _GpsState.failed);
+        return;
+      }
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
+        debugPrint('📍 [GPS] permission après demande = $perm');
+        if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+          debugPrint('🔴 [GPS] permission refusée → gpsState=failed');
+          if (mounted) setState(() => _gpsState = _GpsState.failed);
+          return;
+        }
       }
-      if (perm == LocationPermission.deniedForever ||
-          perm == LocationPermission.denied) return;
 
+      debugPrint('📍 [GPS] récupération position en cours…');
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+          timeLimit: Duration(seconds: 15),
         ),
       );
-      if (mounted) setState(() {
-        _latitude  = pos.latitude;
-        _longitude = pos.longitude;
-      });
+      debugPrint('📍 [GPS] ✅ position obtenue lat=${pos.latitude} lng=${pos.longitude} accuracy=${pos.accuracy}m');
+
+      if (mounted) {
+        setState(() {
+          _latitude  = pos.latitude;
+          _longitude = pos.longitude;
+          _gpsState  = _GpsState.ready;
+        });
+        debugPrint('📍 [GPS] setState → gpsState=ready lat=$_latitude lng=$_longitude');
+      }
     } catch (e) {
-      debugPrint('[GPS] erreur _fetchLocation : $e');
+      debugPrint('🔴 [GPS] erreur _fetchLocation : $e');
+      // Timeout ou autre erreur → on laisse publier sans coordonnées
+      if (mounted) setState(() => _gpsState = _GpsState.failed);
     }
   }
 
+  // ── Publish ──────────────────────────────────────────────────────────────
+
   Future<void> _publish() async {
+    // Sécurité : ne devrait pas arriver car le bouton est désactivé en loading,
+    // mais on garde le guard au cas où.
+    if (_gpsState == _GpsState.loading) {
+      debugPrint('⚠️  [publish] GPS encore en cours — appui ignoré');
+      return;
+    }
+
+    debugPrint('🟩 [publish] start — gpsState=$_gpsState lat=$_latitude lng=$_longitude');
+    debugPrint('🟩 [publish] userId=${widget.userId} adventureId=${widget.adventureId}');
+
     if (widget.userId == null) {
+      debugPrint('🔴 [publish] userId null → abort');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Utilisateur non identifié'), backgroundColor: kError),
       );
       return;
     }
     if (widget.adventureId == null) {
+      debugPrint('🔴 [publish] adventureId null → abort');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune aventure en cours'), backgroundColor: kError),
       );
@@ -570,8 +631,10 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
       final supabase = Supabase.instance.client;
       if (supabase.auth.currentSession == null) throw Exception('Session expirée');
 
+      // Upload image
       final bytes    = await File(_currentPath).readAsBytes();
       final fileName = '${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      debugPrint('🟩 [publish] upload $fileName (${bytes.length} bytes)');
       setState(() { _uploadProgress = 0.2; _uploadStatus = 'Upload en cours…'; });
 
       await supabase.storage
@@ -583,45 +646,54 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
       final publicUrl = supabase.storage
           .from(dotenv.env['SUPABASE_BUCKET']!)
           .getPublicUrl(fileName);
+      debugPrint('🟩 [publish] publicUrl = $publicUrl');
 
-      // ── Vérification POI ──────────────────────────
+      // Vérification POI
       setState(() { _uploadProgress = 0.75; _uploadStatus = 'Vérification des POI…'; });
       List<dynamic> unlockedBadges = [];
       int? nearestPoiId;
 
       if (_latitude != null && _longitude != null) {
+        debugPrint('📍 [publish] recherche POI proches lat=$_latitude lng=$_longitude');
         try {
           final nearbyPois = await fetchNearbyPoi(_latitude!, _longitude!);
+          debugPrint('📍 [publish] ${nearbyPois.length} POI trouvé(s)');
 
-          // Prend le POI le plus proche pour le lier à la photo
           if (nearbyPois.isNotEmpty) {
             nearestPoiId = nearbyPois[0]['id'] as int?;
+            debugPrint('📍 [publish] POI le plus proche id=$nearestPoiId name=${nearbyPois[0]['name']}');
           }
 
           for (final poi in nearbyPois) {
+            debugPrint('📍 [publish] tentative unlock badge poiId=${poi['id']}');
             final result = await unlockBadge(widget.userId!, poi['id'] as int);
+            debugPrint('📍 [publish] unlockBadge result=$result');
             if (result['already_unlocked'] == false) {
               unlockedBadges.add(poi);
+              debugPrint('🏆 [publish] nouveau badge débloqué : ${poi['name']}');
             }
           }
         } catch (e) {
-          debugPrint('[POI] erreur vérification : $e');
+          debugPrint('🔴 [publish] erreur vérification POI : $e');
         }
+      } else {
+        debugPrint('⚠️  [publish] pas de coordonnées → POI ignorés');
       }
-      // ─────────────────────────────────────────────
 
       setState(() { _uploadProgress = 0.88; _uploadStatus = 'Enregistrement en base…'; });
+      debugPrint('🟩 [publish] postPhoto lat=$_latitude lng=$_longitude poiId=$nearestPoiId');
+
       await postPhoto(
         userId:      widget.userId!,
         adventureId: widget.adventureId!,
         imageUrl:    publicUrl,
         description: _captionController.text.trim().isEmpty
-            ? null
-            : _captionController.text.trim(),
+            ? null : _captionController.text.trim(),
         latitude:    _latitude,
         longitude:   _longitude,
-        poiId:       nearestPoiId, // ← POI lié à la photo
+        poiId:       nearestPoiId,
       );
+      debugPrint('🟩 [publish] postPhoto OK ✅');
 
       setState(() { _uploadProgress = 1.0; _uploadStatus = 'Publié !'; });
       if (!mounted) return;
@@ -633,7 +705,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
       }
 
     } catch (e) {
-      debugPrint('[publish] erreur : $e');
+      debugPrint('🔴 [publish] erreur : $e');
       setState(() => _isUploading = false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -667,19 +739,11 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                 child: const Icon(Icons.emoji_events, color: kPrimary, size: 32),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Badge débloqué !',
-                style: TextStyle(
-                  color: kText,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              const Text('Badge débloqué !',
+                style: TextStyle(color: kText, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text(
-                'Tu as découvert un nouveau lieu',
-                style: TextStyle(color: kTextMid, fontSize: 13),
-              ),
+              const Text('Tu as découvert un nouveau lieu',
+                style: TextStyle(color: kTextMid, fontSize: 13)),
               const SizedBox(height: 16),
               ...badges.map((poi) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -690,44 +754,28 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: kPrimary.withOpacity(0.4), width: 1.5),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: kPrimary.withOpacity(0.12),
-                        ),
-                        child: const Icon(Icons.star, color: kPrimary, size: 20),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              poi['badge_name'] ?? poi['name'],
-                              style: const TextStyle(
-                                color: kText,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                            if (poi['badge_description'] != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                poi['badge_description'],
-                                style: const TextStyle(
-                                  color: kTextMid,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle, color: kPrimary.withOpacity(0.12)),
+                      child: const Icon(Icons.star, color: kPrimary, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(poi['badge_name'] ?? poi['name'],
+                          style: const TextStyle(
+                            color: kText, fontWeight: FontWeight.w700, fontSize: 14)),
+                        if (poi['badge_description'] != null) ...[
+                          const SizedBox(height: 2),
+                          Text(poi['badge_description'],
+                            style: const TextStyle(color: kTextMid, fontSize: 12)),
+                        ],
+                      ],
+                    )),
+                  ]),
                 ),
               )),
               const SizedBox(height: 8),
@@ -738,15 +786,11 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kPrimary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Text(
-                    'Super !',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                  ),
+                  child: const Text('Super !',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                 ),
               ),
             ],
@@ -791,8 +835,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: sel ? kPrimary : Colors.transparent, width: 2),
-                          ),
+                              color: sel ? kPrimary : Colors.transparent, width: 2)),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: matrix == null
@@ -807,8 +850,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                         Text(_filters[i]['label'] as String,
                           style: TextStyle(
                             color: sel ? kPrimary : kTextMid, fontSize: 11,
-                            fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                          )),
+                            fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
                       ]),
                     ),
                   );
@@ -850,7 +892,8 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
     try {
       await Share.shareXFiles(
         [XFile(_currentPath)],
-        text: _captionController.text.trim().isEmpty ? null : _captionController.text.trim(),
+        text: _captionController.text.trim().isEmpty
+            ? null : _captionController.text.trim(),
       );
     } catch (e) {
       if (!mounted) return;
@@ -859,6 +902,8 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
       );
     }
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -880,6 +925,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         children: [
           img,
           if (_isUploading) _buildUploadOverlay(),
+          // Top bar
           Positioned(
             top: 0, left: 0, right: 0,
             child: Container(
@@ -892,22 +938,21 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
               child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      _CircleBtn(icon: Icons.arrow_back,
-                        onTap: _isUploading ? () {} : () => Navigator.pop(context)),
-                      const Spacer(),
-                      _CircleBtn(icon: Icons.download,
-                        onTap: _isUploading ? () {} : _saveToGallery),
-                      const SizedBox(width: 10),
-                      _CircleBtn(icon: Icons.share,
-                        onTap: _isUploading ? () {} : _shareImage),
-                    ],
-                  ),
+                  child: Row(children: [
+                    _CircleBtn(icon: Icons.arrow_back,
+                      onTap: _isUploading ? () {} : () => Navigator.pop(context)),
+                    const Spacer(),
+                    _CircleBtn(icon: Icons.download,
+                      onTap: _isUploading ? () {} : _saveToGallery),
+                    const SizedBox(width: 10),
+                    _CircleBtn(icon: Icons.share,
+                      onTap: _isUploading ? () {} : _shareImage),
+                  ]),
                 ),
               ),
             ),
           ),
+          // Bottom bar
           if (!_isUploading)
             Positioned(
               bottom: 0, left: 0, right: 0,
@@ -953,23 +998,8 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
                       maxLines: 1,
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _publish,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: kPrimary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          elevation: 4,
-                          shadowColor: kPrimary.withOpacity(0.4),
-                        ),
-                        child: const Text('Publier',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      ),
-                    ),
+                    // ── Bouton Publier avec état GPS ─────────────────
+                    _buildPublishButton(),
                   ],
                 ),
               ),
@@ -977,6 +1007,117 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         ],
       ),
     );
+  }
+
+  /// Bouton "Publier" qui reflète l'état GPS :
+  /// - loading  → spinner + "Localisation en cours…" + désactivé
+  /// - ready    → bouton normal vert/actif
+  /// - failed   → bouton actif mais avec icône warning + "Publier sans localisation"
+  Widget _buildPublishButton() {
+    switch (_gpsState) {
+      case _GpsState.loading:
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: null, // désactivé
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimary.withOpacity(0.45),
+              disabledBackgroundColor: kPrimary.withOpacity(0.45),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                    color: Colors.white.withOpacity(0.8),
+                    strokeWidth: 2,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Localisation en cours…',
+                  style: TextStyle(
+                    color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ],
+            ),
+          ),
+        );
+
+      case _GpsState.failed:
+        return Column(
+          children: [
+            // Petit avertissement au-dessus du bouton
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.location_off, color: Colors.orange, size: 13),
+                  SizedBox(width: 6),
+                  Text(
+                    'GPS indisponible — photo publiée sans coordonnées',
+                    style: TextStyle(color: Colors.orange, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _publish,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 4,
+                  shadowColor: kPrimary.withOpacity(0.4),
+                ),
+                child: const Text('Publier',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+          ],
+        );
+
+      case _GpsState.ready:
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _publish,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 4,
+              shadowColor: kPrimary.withOpacity(0.4),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.location_on, size: 16, color: Colors.white70),
+                SizedBox(width: 6),
+                Text('Publier',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+          ),
+        );
+    }
   }
 
   Widget _buildUploadOverlay() => Container(
@@ -995,7 +1136,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
           const SizedBox(height: 16),
           Text('${(_uploadProgress * 100).toInt()}%',
             style: const TextStyle(
-                color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(_uploadStatus,
             style: const TextStyle(color: Colors.white70, fontSize: 14)),
@@ -1039,16 +1180,13 @@ class _TopBarBtn extends StatelessWidget {
         color: active ? kPrimary.withOpacity(0.25) : Colors.black38,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: active ? kPrimary : Colors.white, size: 20),
-          if (label != null) ...[
-            const SizedBox(width: 4),
-            Text(label!, style: TextStyle(color: active ? kPrimary : Colors.white, fontSize: 12)),
-          ],
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: active ? kPrimary : Colors.white, size: 20),
+        if (label != null) ...[
+          const SizedBox(width: 4),
+          Text(label!, style: TextStyle(color: active ? kPrimary : Colors.white, fontSize: 12)),
         ],
-      ),
+      ]),
     ),
   );
 }
@@ -1074,7 +1212,9 @@ class _BottomActionBtn extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool active;
-  const _BottomActionBtn({required this.icon, required this.label, required this.onTap, this.active = false});
+  const _BottomActionBtn({
+    required this.icon, required this.label,
+    required this.onTap, this.active = false});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -1082,7 +1222,8 @@ class _BottomActionBtn extends StatelessWidget {
     child: Column(children: [
       Icon(icon, color: active ? kPrimary : Colors.white, size: 24),
       const SizedBox(height: 4),
-      Text(label, style: TextStyle(color: active ? kPrimary : Colors.white70, fontSize: 11)),
+      Text(label,
+        style: TextStyle(color: active ? kPrimary : Colors.white70, fontSize: 11)),
     ]),
   );
 }

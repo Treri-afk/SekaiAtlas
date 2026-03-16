@@ -1,68 +1,106 @@
 const express = require('express');
-const router  = express.Router();
-const db      = require('../database/db');
+const router = express.Router();
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.ANON_KEY;
+if (!supabaseUrl || !supabaseKey) throw new Error('Supabase URL ou KEY manquant');
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // GET /friends/friend?user_id=
-router.get('/friend', (req, res) => {
+router.get('/friend', async (req, res) => {
   const user_id = parseInt(req.query.user_id);
   if (isNaN(user_id)) return res.status(400).json({ error: 'user_id invalide' });
 
-  const sql = `
-    SELECT u.id, u.username, u.avatar_url, u.friend_code
-    FROM users_friend f
-    JOIN users u ON (u.id = f.user_id OR u.id = f.friend_id)
-    WHERE ? IN (f.user_id, f.friend_id) AND u.id != ?
-  `;
+  try {
+    // ── Côté user_id : je suis l'initiateur, l'ami est friend_id
+    const { data: asUser, error: e1 } = await supabase
+      .from('users_friend')
+      .select('friend:users!users_friend_friend_id_fkey(id, username, avatar_url, friend_code)')
+      .eq('user_id', user_id);
 
-  db.query(sql, [user_id, user_id], (err, results) => {
-    if (err) { console.error('[GET /friends/friend]', err); return res.status(500).json({ error: 'Erreur serveur' }); }
-    res.json(results);
-  });
+    if (e1) throw e1;
+
+    // ── Côté friend_id : quelqu'un m'a ajouté, je suis l'ami
+    const { data: asFriend, error: e2 } = await supabase
+      .from('users_friend')
+      .select('friend:users!users_friend_user_id_fkey(id, username, avatar_url, friend_code)')
+      .eq('friend_id', user_id);
+
+    if (e2) throw e2;
+
+    // Aplatir et dédupliquer par id
+    const all = [
+      ...asUser.map(r => r.friend),
+      ...asFriend.map(r => r.friend),
+    ].filter(Boolean);
+
+    const seen = new Set();
+    const result = all.filter(u => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('[GET /friends/friend]', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 // POST /friends
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const user_id     = parseInt(req.body.user_id);
   const friend_code = req.body.friend_code?.toString().trim().toUpperCase();
 
   if (isNaN(user_id) || !friend_code) {
     return res.status(400).json({ error: 'user_id et friend_code sont requis' });
   }
-  if (!/^[A-Z0-9]{4,10}$/.test(friend_code)) {
-    return res.status(400).json({ error: 'Format de code ami invalide' });
-  }
 
-  db.query('SELECT id FROM users WHERE friend_code = ?', [friend_code], (err, results) => {
-    if (err) { console.error('[POST /friends] check code', err); return res.status(500).json({ error: 'Erreur serveur' }); }
-    if (results.length === 0) return res.status(404).json({ error: 'Aucun utilisateur trouvé avec ce code ami' });
+  try {
+    // Chercher l'utilisateur avec ce friend_code
+    const { data: users, error: findError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('friend_code', friend_code)
+      .limit(1);
 
-    const friend_id = results[0].id;
+    if (findError) throw findError;
+    if (!users || users.length === 0)
+      return res.status(404).json({ error: 'Aucun utilisateur trouvé avec ce code ami' });
 
-    if (friend_id === user_id) {
+    const friend_id = users[0].id;
+
+    if (friend_id === user_id)
       return res.status(400).json({ error: 'Vous ne pouvez pas vous ajouter vous-même' });
-    }
 
-    db.query(
-      'SELECT id FROM users_friend WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)',
-      [user_id, friend_id, friend_id, user_id],
-      (err, existing) => {
-        if (err) { console.error('[POST /friends] check existing', err); return res.status(500).json({ error: 'Erreur serveur' }); }
-        if (existing.length > 0) return res.status(409).json({ error: 'Vous êtes déjà amis' });
+    // Vérifier si la relation existe déjà dans les deux sens
+    const { data: existing, error: existError } = await supabase
+      .from('users_friend')
+      .select('id')
+      .or(
+        `and(user_id.eq.${user_id},friend_id.eq.${friend_id}),and(user_id.eq.${friend_id},friend_id.eq.${user_id})`
+      );
 
-        db.query(
-          'INSERT INTO users_friend (user_id, friend_id, created_at) VALUES (?, ?, NOW())',
-          [user_id, friend_id],
-          (err) => {
-            if (err) { console.error('[POST /friends] insert', err); return res.status(500).json({ error: 'Erreur serveur' }); }
-            res.json({ success: true, friend_id });
-          }
-        );
-      }
-    );
-  });
+    if (existError) throw existError;
+    if (existing && existing.length > 0)
+      return res.status(409).json({ error: 'Vous êtes déjà amis' });
+
+    // Insérer la relation
+    const { error: insertError } = await supabase
+      .from('users_friend')
+      .insert([{ user_id, friend_id }]);
+
+    if (insertError) throw insertError;
+
+    res.json({ success: true, friend_id });
+  } catch (err) {
+    console.error('[POST /friends]', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
-
-// GET /friends — admin uniquement, retiré en prod
-// router.get('/', ...)
 
 module.exports = router;

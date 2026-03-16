@@ -32,34 +32,66 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _loadPhotos() async {
+    debugPrint('🗺️  [MapPage] _loadPhotos — start');
     setState(() => _loadingPhotos = true);
     try {
       final photos = await fetchAllPhotos();
-      debugPrint('[map] ${photos.length} photos récupérées');
-      final markers = photos
-          .where((p) {
-            final lat = double.tryParse(p["latitude"]?.toString() ?? '');
-            final lng = double.tryParse(p["longitude"]?.toString() ?? '');
-            return lat != null && lng != null;
-          })
-          .map((p) => _PhotoMarker(
-                lat:              double.parse(p["latitude"].toString()),
-                lng:              double.parse(p["longitude"].toString()),
-                imageUrl:         p["image_url"]?.toString()       ?? '',
-                username:         p["username"]?.toString()        ?? '',
-                adventureName:    p["adventure_name"]?.toString()  ?? '',
-                createdAt:        p["created_at"]?.toString()      ?? '',
-                caption:          p["description"]?.toString()     ?? '',
-                badgeName:        p["badge_name"]?.toString(),
-                badgeDescription: p["badge_description"]?.toString(),
-                poiName:          p["poi_name"]?.toString(),
-                poiRarity:        p["poi_rarity"]?.toString(),
-              ))
-          .toList();
-      debugPrint('[map] ${markers.length} photos avec coordonnées');
+      debugPrint('🗺️  [MapPage] ${photos.length} photos reçues de fetchAllPhotos');
+
+      int skippedNoCoords = 0;
+      int withPoi = 0;
+      int withBadge = 0;
+
+      final markers = <_PhotoMarker>[];
+
+      for (final p in photos) {
+        final lat = double.tryParse(p['latitude']?.toString() ?? '');
+        final lng = double.tryParse(p['longitude']?.toString() ?? '');
+
+        if (lat == null || lng == null) {
+          skippedNoCoords++;
+          debugPrint('🗺️  [MapPage] ⏭️  photo id=${p["id"]} ignorée (pas de coordonnées GPS)');
+          continue;
+        }
+
+        // Log détaillé des champs POI/badge pour débogage
+        debugPrint('🗺️  [MapPage] photo id=${p["id"]} '
+            'lat=$lat lng=$lng '
+            'poi_name=${p["poi_name"]} '
+            'poi_rarity=${p["poi_rarity"]} '
+            'badge_name=${p["badge_name"]} '
+            'username=${p["username"]} '
+            'adventure_name=${p["adventure_name"]}');
+
+        final hasBadge = p['badge_name'] != null && p['badge_name'].toString().isNotEmpty;
+        final hasPoi   = p['poi_name']   != null && p['poi_name'].toString().isNotEmpty;
+        if (hasPoi)   withPoi++;
+        if (hasBadge) withBadge++;
+
+        markers.add(_PhotoMarker(
+          lat:              lat,
+          lng:              lng,
+          imageUrl:         p['image_url']?.toString()       ?? '',
+          username:         p['username']?.toString()        ?? '',
+          adventureName:    p['adventure_name']?.toString()  ?? '',
+          createdAt:        p['created_at']?.toString()      ?? '',
+          caption:          p['description']?.toString()     ?? '',
+          badgeName:        hasBadge ? p['badge_name'].toString()        : null,
+          badgeDescription: p['badge_description']?.toString(),
+          poiName:          hasPoi   ? p['poi_name'].toString()          : null,
+          poiRarity:        p['poi_rarity']?.toString(),
+        ));
+      }
+
+      debugPrint('🗺️  [MapPage] ✅ ${markers.length} markers créés');
+      debugPrint('🗺️  [MapPage]    → ignorés (sans GPS)  : $skippedNoCoords');
+      debugPrint('🗺️  [MapPage]    → avec POI            : $withPoi');
+      debugPrint('🗺️  [MapPage]    → avec badge          : $withBadge');
+
       if (mounted) setState(() => _photoMarkers = markers);
-    } catch (e) {
-      debugPrint('[map] erreur chargement photos : $e');
+    } catch (e, stack) {
+      debugPrint('🔴 [MapPage] erreur _loadPhotos : $e');
+      debugPrint('🔴 [MapPage] stack : $stack');
     } finally {
       if (mounted) setState(() => _loadingPhotos = false);
     }
@@ -96,7 +128,12 @@ class _MapPageState extends State<MapPage> {
                   width: 52,
                   height: 62,
                   child: GestureDetector(
-                    onTap: () => _showPhotoPopup(context, m),
+                    onTap: () {
+                      debugPrint('🗺️  [MapPage] tap sur marker → '
+                          'lat=${m.lat} lng=${m.lng} '
+                          'poi=${m.poiName} badge=${m.badgeName}');
+                      _showPhotoPopup(context, m);
+                    },
                     child: _PhotoPin(
                       imageUrl: m.imageUrl,
                       hasBadge: m.badgeName != null,
@@ -156,7 +193,10 @@ class _MapPageState extends State<MapPage> {
             right: 16, bottom: 32,
             child: Column(
               children: [
-                _MapButton(icon: Icons.refresh, onTap: _loadPhotos),
+                _MapButton(icon: Icons.refresh, onTap: () {
+                  debugPrint('🗺️  [MapPage] refresh demandé');
+                  _loadPhotos();
+                }),
                 const SizedBox(height: 8),
                 _MapButton(icon: Icons.add,
                   onTap: () => _mapController.move(
@@ -177,6 +217,15 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _showPhotoPopup(BuildContext context, _PhotoMarker m) {
+    debugPrint('🗺️  [MapPage] _showPhotoPopup — marker: '
+        'username=${m.username} '
+        'adventure=${m.adventureName} '
+        'poi=${m.poiName} '
+        'rarity=${m.poiRarity} '
+        'badge=${m.badgeName} '
+        'badgeDesc=${m.badgeDescription} '
+        'caption="${m.caption}"');
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -263,13 +312,16 @@ class _MapPageState extends State<MapPage> {
 
                     // ── Photo cliquable ──────────────────
                     GestureDetector(
-                      onTap: () => Navigator.of(context).push(PageRouteBuilder(
-                        opaque: false,
-                        barrierColor: Colors.black87,
-                        pageBuilder: (_, __, ___) => _FullScreenPhoto(imageUrl: m.imageUrl),
-                        transitionsBuilder: (_, anim, __, child) =>
-                            FadeTransition(opacity: anim, child: child),
-                      )),
+                      onTap: () {
+                        debugPrint('🗺️  [MapPage] ouverture fullscreen → ${m.imageUrl}');
+                        Navigator.of(context).push(PageRouteBuilder(
+                          opaque: false,
+                          barrierColor: Colors.black87,
+                          pageBuilder: (_, __, ___) => _FullScreenPhoto(imageUrl: m.imageUrl),
+                          transitionsBuilder: (_, anim, __, child) =>
+                              FadeTransition(opacity: anim, child: child),
+                        ));
+                      },
                       child: Stack(
                         children: [
                           ClipRRect(
@@ -279,11 +331,14 @@ class _MapPageState extends State<MapPage> {
                               height: 500,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                height: 280, color: kBgCard2,
-                                child: const Center(child: Icon(
-                                    Icons.broken_image_outlined, color: kTextMid, size: 40)),
-                              ),
+                              errorBuilder: (_, err, ___) {
+                                debugPrint('🔴 [MapPage] erreur chargement image : $err url=${m.imageUrl}');
+                                return Container(
+                                  height: 280, color: kBgCard2,
+                                  child: const Center(child: Icon(
+                                      Icons.broken_image_outlined, color: kTextMid, size: 40)),
+                                );
+                              },
                             ),
                           ),
                           Positioned(
@@ -317,10 +372,10 @@ class _MapPageState extends State<MapPage> {
                               style: const TextStyle(
                                 color: kText, fontSize: 14, height: 1.5),
                             )
-                          : Row(children: [
-                              const Icon(Icons.edit_off_outlined, color: kTextDim, size: 14),
-                              const SizedBox(width: 8),
-                              const Text('Aucune description',
+                          : Row(children: const [
+                              Icon(Icons.edit_off_outlined, color: kTextDim, size: 14),
+                              SizedBox(width: 8),
+                              Text('Aucune description',
                                 style: TextStyle(color: kTextDim, fontSize: 13,
                                     fontStyle: FontStyle.italic)),
                             ]),
@@ -329,6 +384,13 @@ class _MapPageState extends State<MapPage> {
 
                     // ── Badge POI ────────────────────────────────
                     if (m.badgeName != null) ...[
+                      Builder(builder: (_) {
+                        debugPrint('🗺️  [MapPage] affichage badge → '
+                            'badgeName=${m.badgeName} '
+                            'badgeDesc=${m.badgeDescription} '
+                            'poiRarity=${m.poiRarity}');
+                        return const SizedBox.shrink();
+                      }),
                       const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
@@ -398,6 +460,11 @@ class _MapPageState extends State<MapPage> {
                           ],
                         ),
                       ),
+                    ] else ...[
+                      Builder(builder: (_) {
+                        debugPrint('🗺️  [MapPage] ℹ️  pas de badge pour cette photo (poi=${m.poiName})');
+                        return const SizedBox.shrink();
+                      }),
                     ],
 
                     // ── Coordonnées ──────────────────────
@@ -493,7 +560,6 @@ class _PhotoPin extends StatelessWidget {
             ),
           ],
         ),
-        // Icône badge en haut à droite du pin, légèrement superposé
         if (hasBadge)
           Positioned(
             top: -4, right: 10,
@@ -536,6 +602,12 @@ class _FullScreenPhoto extends StatelessWidget {
                 loadingBuilder: (_, child, p) => p == null
                     ? child
                     : const Center(child: CircularProgressIndicator(color: kPrimary)),
+                errorBuilder: (_, err, ___) {
+                  debugPrint('🔴 [FullScreenPhoto] erreur chargement image : $err url=$imageUrl');
+                  return const Center(
+                    child: Icon(Icons.broken_image_outlined, color: kTextMid, size: 48),
+                  );
+                },
               ),
             ),
           ),
