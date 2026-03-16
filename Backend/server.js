@@ -22,7 +22,13 @@ const photosRouter = require('./routes/photos');
 
 app.use('/photos', photosRouter);
 
+const poiRoutes = require('./routes/poi');
 
+app.use('/poi', poiRoutes);
+
+const badgesRoutes = require('./routes/badges');
+
+app.use('/badges', badgesRoutes);
 
 
 app.get('/', (req, res) => {

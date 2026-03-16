@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -24,7 +25,22 @@ Future<void> main() async {
   webClientId       = dotenv.env['WEB_CLIENT_ID_GOOGLE_CLOUD']!;
 
   await Supabase.initialize(url: supabaseUrl, anonKey: anonKey);
+
+  // Demande les permissions au démarrage
+  await _requestPermissions();
+
   runApp(const MyApp());
+}
+
+Future<void> _requestPermissions() async {
+  // ── Localisation ──────────────────────────
+  LocationPermission locPerm = await Geolocator.checkPermission();
+  if (locPerm == LocationPermission.denied) {
+    locPerm = await Geolocator.requestPermission();
+    debugPrint('[main] localisation permission : $locPerm');
+  } else {
+    debugPrint('[main] localisation déjà accordée : $locPerm');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -77,7 +93,6 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   int _currentIndex = 1;
 
-  // Plus aucun callback manuel — tout passe par AdventureNotifier
   static const List<Widget> _pages = [
     MapPage(),
     TakePictureScreen(),
@@ -130,16 +145,8 @@ class _RpgNavBar extends StatelessWidget {
         color: kBgCard2,
         border: Border(top: BorderSide(color: kPrimary.withOpacity(0.25), width: 1.5)),
         boxShadow: [
-          BoxShadow(
-            color: kPrimary.withOpacity(0.06),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
+          BoxShadow(color: kPrimary.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, -4)),
+          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, -2)),
         ],
       ),
       child: SafeArea(
@@ -214,10 +221,7 @@ class _SideTab extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               height: 2,
               width: selected ? 20 : 0,
-              decoration: BoxDecoration(
-                color: kPrimary,
-                borderRadius: BorderRadius.circular(1),
-              ),
+              decoration: BoxDecoration(color: kPrimary, borderRadius: BorderRadius.circular(1)),
             ),
           ],
         ),
@@ -243,58 +247,32 @@ class _CenterTab extends StatelessWidget {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
-            width: 56,
-            height: 56,
+            width: 56, height: 56,
             decoration: BoxDecoration(
               gradient: selected
                   ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [kPrimary, kPrimaryLt],
-                    )
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [kPrimary, kPrimaryLt])
                   : LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [kBgCard, kBgCard2],
-                    ),
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [kBgCard, kBgCard2]),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: selected ? kPrimary : kBorder,
-                width: selected ? 2 : 1.5,
-              ),
+              border: Border.all(color: selected ? kPrimary : kBorder, width: selected ? 2 : 1.5),
               boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: kPrimary.withOpacity(0.45),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                  ? [BoxShadow(color: kPrimary.withOpacity(0.45), blurRadius: 16, offset: const Offset(0, 4), spreadRadius: 1)]
+                  : [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 2))],
             ),
-            child: Icon(
-              selected ? tab.activeIcon : tab.icon,
-              color: selected ? Colors.white : kTextMid,
-              size: 26,
-            ),
+            child: Icon(selected ? tab.activeIcon : tab.icon,
+                color: selected ? Colors.white : kTextMid, size: 26),
           ),
           const SizedBox(height: 5),
-          Text(
-            tab.label,
+          Text(tab.label,
             style: TextStyle(
               fontSize: 11,
               fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
               color: selected ? kPrimary : kTextMid,
               letterSpacing: 0.3,
-            ),
-          ),
+            )),
           const SizedBox(height: 5),
         ],
       ),

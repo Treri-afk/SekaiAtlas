@@ -24,6 +24,48 @@ class AventureDetailPopup {
   }
 }
 
+// ─────────────────────────────────────────────
+//  MODÈLE PHOTO ENRICHI
+// ─────────────────────────────────────────────
+class _PhotoData {
+  final String imageUrl;
+  final String? description;
+  final String? username;
+  final String? avatarUrl;
+  final String? poiName;
+  final String? badgeName;
+  final String? badgeDescription;
+  final String? poiRarity;
+  final String createdAt;
+
+  const _PhotoData({
+    required this.imageUrl,
+    this.description,
+    this.username,
+    this.avatarUrl,
+    this.poiName,
+    this.badgeName,
+    this.badgeDescription,
+    this.poiRarity,
+    required this.createdAt,
+  });
+
+  factory _PhotoData.fromMap(Map<String, dynamic> m) => _PhotoData(
+    imageUrl:         m['image_url']?.toString()         ?? '',
+    description:      m['description']?.toString(),
+    username:         m['username']?.toString(),
+    avatarUrl:        m['avatar_url']?.toString(),
+    poiName:          m['poi_name']?.toString(),
+    badgeName:        m['badge_name']?.toString(),
+    badgeDescription: m['badge_description']?.toString(),
+    poiRarity:        m['poi_rarity']?.toString(),
+    createdAt:        m['created_at']?.toString()         ?? '',
+  );
+}
+
+// ─────────────────────────────────────────────
+//  SHEET PRINCIPALE
+// ─────────────────────────────────────────────
 class _AventureDetailSheet extends StatefulWidget {
   final Map<String, dynamic> adventure;
   final List<dynamic>? players;
@@ -42,8 +84,8 @@ class _AventureDetailSheet extends StatefulWidget {
 }
 
 class _AventureDetailSheetState extends State<_AventureDetailSheet> {
-  List<String> _photoUrls = [];
-  List<dynamic> _players  = [];
+  List<_PhotoData> _photos  = [];
+  List<dynamic>   _players  = [];
   bool _loadingPhotos  = true;
   bool _loadingPlayers = true;
 
@@ -52,8 +94,8 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     super.initState();
     _loadPhotos();
     if (widget.players != null) {
-      _players         = List<dynamic>.from(widget.players!);
-      _loadingPlayers  = false;
+      _players        = List<dynamic>.from(widget.players!);
+      _loadingPlayers = false;
     } else {
       _loadPlayers();
     }
@@ -64,10 +106,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
       final id           = widget.adventure["id"] as int;
       final participants = await fetchAdventureParticipants(id);
       if (!mounted) return;
-      setState(() {
-        _players        = participants;
-        _loadingPlayers = false;
-      });
+      setState(() { _players = participants; _loadingPlayers = false; });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingPlayers = false);
@@ -77,12 +116,12 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
   Future<void> _loadPhotos() async {
     try {
       final id     = widget.adventure["id"] as int;
-      final photos = await fetchAdventurePhotos(id);
+      final raw    = await fetchAdventurePhotos(id);
       if (!mounted) return;
       setState(() {
-        _photoUrls = photos
+        _photos = raw
             .where((p) => p["image_url"] != null && p["image_url"] != "")
-            .map<String>((p) => p["image_url"] as String)
+            .map<_PhotoData>((p) => _PhotoData.fromMap(Map<String, dynamic>.from(p)))
             .toList();
         _loadingPhotos = false;
       });
@@ -92,6 +131,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     }
   }
 
+  // ── Helpers stats ──────────────────────────
   int get _joursActifs {
     try {
       final d = DateTime.parse(widget.adventure["created_at"]);
@@ -106,10 +146,50 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     } catch (_) { return '—'; }
   }
 
+  /// Nombre de POI distincts visités dans cette aventure
+  int get _lieuxVisites {
+    final ids = _photos
+        .where((p) => p.poiName != null && p.poiName!.isNotEmpty)
+        .map((p) => p.poiName!)
+        .toSet();
+    return ids.length;
+  }
+
+  /// Nombre de photos avec description
+  int get _photosAvecDescription =>
+      _photos.where((p) => p.description != null && p.description!.isNotEmpty).length;
+
+  /// Nombre de badges distincts débloqués dans cette aventure
+  int get _badgesDebloques {
+    final badges = _photos
+        .where((p) => p.badgeName != null && p.badgeName!.isNotEmpty)
+        .map((p) => p.badgeName!)
+        .toSet();
+    return badges.length;
+  }
+
+  /// Photo la plus récente — date courte
+  String get _dernierePhoto {
+    if (_photos.isEmpty) return '—';
+    try {
+      final d = DateTime.parse(_photos.first.createdAt);
+      return '${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}';
+    } catch (_) { return '—'; }
+  }
+
+  Color _rarityColor(String? rarity) {
+    switch (rarity) {
+      case 'legendaire': return const Color(0xFFE8A020);
+      case 'rare':       return const Color(0xFF5B8DD9);
+      default:           return kTextMid;
+    }
+  }
+
+  // ── Build ──────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.88,
+      height: MediaQuery.of(context).size.height * 0.90,
       decoration: const BoxDecoration(
         color: kBg,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -155,6 +235,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     );
   }
 
+  // ── Terminate ──────────────────────────────
   void _showTerminateDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -162,7 +243,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
       builder: (dialogCtx) => _TerminateDialog(
         adventureName: widget.adventure["name"] ?? 'cette aventure',
         onConfirm: () async {
-          Navigator.pop(dialogCtx); // ferme le dialog
+          Navigator.pop(dialogCtx);
           await _terminateAdventure(context);
         },
       ),
@@ -174,13 +255,10 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
       final id = widget.adventure["id"] as int;
       await terminateAdventure(id);
       if (!mounted) return;
-      Navigator.pop(context); // ferme le popup
-      widget.onTerminated?.call(); // recharge AventureEnCours
+      Navigator.pop(context);
+      widget.onTerminated?.call();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aventure terminée ✓'),
-          backgroundColor: kSuccess,
-        ),
+        const SnackBar(content: Text('Aventure terminée ✓'), backgroundColor: kSuccess),
       );
     } catch (e) {
       if (!mounted) return;
@@ -190,6 +268,7 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     }
   }
 
+  // ── Header ─────────────────────────────────
   Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
@@ -276,55 +355,137 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     );
   }
 
+  // ── Photos ─────────────────────────────────
   Widget _buildPhotos(BuildContext context) {
     if (_loadingPhotos) {
       return Container(
-        height: 100,
+        height: 220,
         decoration: BoxDecoration(color: kBgCard, borderRadius: BorderRadius.circular(12),
           border: Border.all(color: kPrimary.withOpacity(0.15))),
         child: const Center(child: CircularProgressIndicator(color: kPrimary, strokeWidth: 2)),
       );
     }
-    if (_photoUrls.isEmpty) {
+    if (_photos.isEmpty) {
       return const _RpgEmptyState(label: "Aucune photo postée pour l'instant");
     }
     return SizedBox(
-      height: 160,
+      height: 220,
       child: PageView.builder(
-        controller: PageController(viewportFraction: 0.75),
-        itemCount: _photoUrls.length,
-        itemBuilder: (ctx, i) => GestureDetector(
-          onTap: () => Navigator.of(context).push(PageRouteBuilder(
-            opaque: false,
-            barrierColor: Colors.black87,
-            pageBuilder: (_, __, ___) => _FullScreenViewer(urls: _photoUrls, initialIndex: i),
-            transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-          )),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: kPrimary.withOpacity(0.2)),
-              boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 3))],
-              image: DecorationImage(image: NetworkImage(_photoUrls[i]), fit: BoxFit.cover),
-            ),
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Container(
-                  width: 28, height: 28,
-                  decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(6)),
-                  child: const Icon(Icons.fullscreen, color: Colors.white, size: 16),
+        controller: PageController(viewportFraction: 0.82),
+        itemCount: _photos.length,
+        itemBuilder: (ctx, i) {
+          final photo = _photos[i];
+          return GestureDetector(
+            onTap: () => Navigator.of(context).push(PageRouteBuilder(
+              opaque: false,
+              barrierColor: Colors.black87,
+              pageBuilder: (_, __, ___) => _FullScreenViewer(photos: _photos, initialIndex: i),
+              transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+            )),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: photo.badgeName != null ? kAccent.withOpacity(0.5) : kPrimary.withOpacity(0.2),
+                  width: photo.badgeName != null ? 1.5 : 1,
+                ),
+                boxShadow: [BoxShadow(
+                  color: (photo.badgeName != null ? kAccent : kPrimary).withOpacity(0.12),
+                  blurRadius: 10, offset: const Offset(0, 3),
+                )],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Image
+                    Image.network(photo.imageUrl, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: kBgCard2,
+                        child: const Center(child: Icon(Icons.broken_image_outlined, color: kTextMid, size: 32)),
+                      ),
+                    ),
+                    // Gradient bas
+                    Positioned(
+                      bottom: 0, left: 0, right: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                            colors: [Colors.black.withOpacity(0.75), Colors.transparent],
+                          ),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(10, 24, 10, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Badge POI si présent
+                            if (photo.badgeName != null) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: _rarityColor(photo.poiRarity).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: _rarityColor(photo.poiRarity).withOpacity(0.5)),
+                                ),
+                                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.star, color: _rarityColor(photo.poiRarity), size: 9),
+                                  const SizedBox(width: 4),
+                                  Text(photo.badgeName!,
+                                    style: TextStyle(
+                                      color: _rarityColor(photo.poiRarity),
+                                      fontSize: 10, fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ]),
+                              ),
+                              const SizedBox(height: 4),
+                            ],
+                            // Description courte
+                            if (photo.description != null && photo.description!.isNotEmpty)
+                              Text(
+                                photo.description!,
+                                style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.3),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            // Username
+                            if (photo.username != null) ...[
+                              const SizedBox(height: 4),
+                              Row(children: [
+                                const Icon(Icons.person_outline, color: Colors.white54, size: 11),
+                                const SizedBox(width: 3),
+                                Text(photo.username!,
+                                  style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                              ]),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Icône fullscreen
+                    Positioned(
+                      top: 8, right: 8,
+                      child: Container(
+                        width: 28, height: 28,
+                        decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(6)),
+                        child: const Icon(Icons.fullscreen, color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
+  // ── Players ────────────────────────────────
   Widget _buildPlayers() {
     if (_loadingPlayers) {
       return Container(
@@ -374,20 +535,28 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     );
   }
 
+  // ── Stats ──────────────────────────────────
   Widget _buildStats() {
     final stats = [
-      _StatData(icon: Icons.calendar_today_outlined, label: 'Début',       value: _dateDebut),
-      _StatData(icon: Icons.bolt_outlined,            label: 'Jours actifs',value: '$_joursActifs j'),
-      _StatData(icon: Icons.people_outline,           label: 'Participants',value: '${_players.length}'),
-      _StatData(icon: Icons.photo_outlined,           label: 'Photos',      value: '${_photoUrls.length}'),
-      _StatData(icon: Icons.place_outlined,           label: 'Lieux',       value: '—'),
-      _StatData(icon: Icons.emoji_events_outlined,    label: 'Objectifs',   value: '0 / 3'),
+      _StatData(icon: Icons.calendar_today_outlined, label: 'Début',        value: _dateDebut),
+      _StatData(icon: Icons.bolt_outlined,            label: 'Jours actifs', value: '$_joursActifs j'),
+      _StatData(icon: Icons.people_outline,           label: 'Participants', value: '${_players.length}'),
+      _StatData(icon: Icons.photo_outlined,           label: 'Photos',       value: '${_photos.length}'),
+      _StatData(icon: Icons.place_outlined,           label: 'Lieux visités',value: '$_lieuxVisites'),
+      _StatData(icon: Icons.emoji_events_outlined,    label: 'Badges',       value: '$_badgesDebloques'),
+      _StatData(icon: Icons.chat_bubble_outline,      label: 'Décrites',     value: '$_photosAvecDescription'),
+      _StatData(icon: Icons.photo_camera_outlined,    label: 'Dernière photo',value: _dernierePhoto),
+      _StatData(icon: Icons.group_outlined,           label: 'Photos/membre',
+        value: _players.isNotEmpty
+            ? (_photos.length / _players.length).toStringAsFixed(1)
+            : '—'),
     ];
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.1),
+        crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.05),
       itemCount: stats.length,
       itemBuilder: (_, i) {
         final s = stats[i];
@@ -402,7 +571,9 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
             const SizedBox(height: 6),
             Text(s.value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kText)),
             const SizedBox(height: 2),
-            Text(s.label, style: const TextStyle(fontSize: 10, color: kTextDim)),
+            Text(s.label,
+              style: const TextStyle(fontSize: 9, color: kTextDim),
+              textAlign: TextAlign.center),
           ]),
         );
       },
@@ -435,35 +606,27 @@ class _TerminateDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Icône
             Container(
               width: 56, height: 56,
               decoration: BoxDecoration(
-                color: kError.withOpacity(0.1),
-                shape: BoxShape.circle,
+                color: kError.withOpacity(0.1), shape: BoxShape.circle,
                 border: Border.all(color: kError.withOpacity(0.3)),
               ),
               child: const Icon(Icons.flag, color: kError, size: 26),
             ),
             const SizedBox(height: 16),
-            // Titre
-            const Text(
-              'Terminer l\'aventure ?',
+            const Text('Terminer l\'aventure ?',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kText),
-            ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kText)),
             const SizedBox(height: 10),
-            // Message
             Text(
               'Voulez-vous vraiment terminer "$adventureName" ? Cette action est irréversible.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: kTextMid, height: 1.4),
             ),
             const SizedBox(height: 24),
-            // Divider
             Container(height: 1, color: kBorder),
             const SizedBox(height: 20),
-            // Boutons
             Row(children: [
               Expanded(
                 child: GestureDetector(
@@ -471,14 +634,11 @@ class _TerminateDialog extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
-                      color: kBgCard,
-                      borderRadius: BorderRadius.circular(12),
+                      color: kBgCard, borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: kBorder),
                     ),
-                    child: const Center(
-                      child: Text('Annuler',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kTextMid)),
-                    ),
+                    child: const Center(child: Text('Annuler',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kTextMid))),
                   ),
                 ),
               ),
@@ -489,16 +649,11 @@ class _TerminateDialog extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
-                      color: kError,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(color: kError.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4)),
-                      ],
+                      color: kError, borderRadius: BorderRadius.circular(12),
+                      boxShadow: [BoxShadow(color: kError.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
                     ),
-                    child: const Center(
-                      child: Text('Terminer',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-                    ),
+                    child: const Center(child: Text('Terminer',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white))),
                   ),
                 ),
               ),
@@ -510,10 +665,13 @@ class _TerminateDialog extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────
+//  FULLSCREEN VIEWER avec description + badge
+// ─────────────────────────────────────────────
 class _FullScreenViewer extends StatefulWidget {
-  final List<String> urls;
+  final List<_PhotoData> photos;
   final int initialIndex;
-  const _FullScreenViewer({required this.urls, required this.initialIndex});
+  const _FullScreenViewer({required this.photos, required this.initialIndex});
 
   @override
   State<_FullScreenViewer> createState() => _FullScreenViewerState();
@@ -522,6 +680,7 @@ class _FullScreenViewer extends StatefulWidget {
 class _FullScreenViewerState extends State<_FullScreenViewer> {
   late int _current;
   late PageController _ctrl;
+  bool _showInfo = true;
 
   @override
   void initState() {
@@ -533,54 +692,190 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
 
+  Color _rarityColor(String? rarity) {
+    switch (rarity) {
+      case 'legendaire': return const Color(0xFFE8A020);
+      case 'rare':       return const Color(0xFF5B8DD9);
+      default:           return kTextMid;
+    }
+  }
+
+  String _formatDate(String raw) {
+    try {
+      final d = DateTime.parse(raw);
+      return '${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year}';
+    } catch (_) { return ''; }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final photo = widget.photos[_current];
+
     return Scaffold(
       backgroundColor: Colors.black87,
-      body: Stack(children: [
-        PageView.builder(
-          controller: _ctrl,
-          itemCount: widget.urls.length,
-          onPageChanged: (i) => setState(() => _current = i),
-          itemBuilder: (_, i) => InteractiveViewer(
-            minScale: 0.5, maxScale: 4.0,
-            child: Center(
-              child: Image.network(widget.urls[i], fit: BoxFit.contain,
-                loadingBuilder: (_, child, p) => p == null ? child
-                    : const Center(child: CircularProgressIndicator(color: kPrimary))),
+      body: GestureDetector(
+        onTap: () => setState(() => _showInfo = !_showInfo),
+        child: Stack(
+          children: [
+            // ── Carrousel photos ──
+            PageView.builder(
+              controller: _ctrl,
+              itemCount: widget.photos.length,
+              onPageChanged: (i) => setState(() => _current = i),
+              itemBuilder: (_, i) => InteractiveViewer(
+                minScale: 0.5, maxScale: 4.0,
+                child: Center(
+                  child: Image.network(widget.photos[i].imageUrl, fit: BoxFit.contain,
+                    loadingBuilder: (_, child, p) => p == null ? child
+                        : const Center(child: CircularProgressIndicator(color: kPrimary))),
+                ),
+              ),
             ),
-          ),
-        ),
-        Positioned(
-          top: 0, left: 0, right: 0,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 40, height: 40,
-                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.close, color: Colors.white, size: 20),
+
+            // ── Barre haut ──
+            if (_showInfo)
+              Positioned(
+                top: 0, left: 0, right: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)),
+                            child: const Icon(Icons.close, color: Colors.white, size: 20),
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20)),
+                          child: Text('${_current + 1} / ${widget.photos.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                        ),
+                      ]),
+                    ),
                   ),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20)),
-                  child: Text('${_current + 1} / ${widget.urls.length}',
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+
+            // ── Panneau bas : infos photo ──
+            if (_showInfo)
+              Positioned(
+                bottom: 0, left: 0, right: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                      colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+                    ),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    20, 32, 20, MediaQuery.of(context).padding.bottom + 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Badge POI
+                      if (photo.badgeName != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _rarityColor(photo.poiRarity).withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _rarityColor(photo.poiRarity).withOpacity(0.5)),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.emoji_events, color: _rarityColor(photo.poiRarity), size: 14),
+                            const SizedBox(width: 6),
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(photo.badgeName!,
+                                style: TextStyle(
+                                  color: _rarityColor(photo.poiRarity),
+                                  fontSize: 12, fontWeight: FontWeight.w800,
+                                )),
+                              if (photo.badgeDescription != null)
+                                Text(photo.badgeDescription!,
+                                  style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                            ]),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+
+                      // Nom du POI
+                      if (photo.poiName != null) ...[
+                        Row(children: [
+                          const Icon(Icons.place_outlined, color: Colors.white54, size: 13),
+                          const SizedBox(width: 5),
+                          Text(photo.poiName!,
+                            style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        ]),
+                        const SizedBox(height: 6),
+                      ],
+
+                      // Description
+                      if (photo.description != null && photo.description!.isNotEmpty) ...[
+                        Text(
+                          photo.description!,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // Auteur + date
+                      Row(children: [
+                        if (photo.avatarUrl != null && photo.avatarUrl!.isNotEmpty)
+                          CircleAvatar(
+                            radius: 12,
+                            backgroundImage: NetworkImage(photo.avatarUrl!),
+                            backgroundColor: kBgCard2,
+                          )
+                        else
+                          const CircleAvatar(
+                            radius: 12, backgroundColor: kBgCard2,
+                            child: Icon(Icons.person, size: 12, color: kTextMid),
+                          ),
+                        const SizedBox(width: 8),
+                        Text(photo.username ?? '',
+                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        Text(_formatDate(photo.createdAt),
+                          style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      ]),
+                    ],
+                  ),
                 ),
-              ]),
-            ),
-          ),
+              ),
+
+            // ── Indicateur tap pour masquer infos ──
+            if (!_showInfo)
+              const Positioned(
+                bottom: 24, left: 0, right: 0,
+                child: Center(
+                  child: Text('Appuie pour afficher les infos',
+                    style: TextStyle(color: Colors.white24, fontSize: 11)),
+                ),
+              ),
+          ],
         ),
-      ]),
+      ),
     );
   }
 }
 
+// ─────────────────────────────────────────────
+//  WIDGETS COMMUNS
+// ─────────────────────────────────────────────
 class _RpgSectionTitle extends StatelessWidget {
   final String label;
   final IconData icon;

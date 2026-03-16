@@ -118,10 +118,14 @@ Future<void> terminateAdventure(int adventureId) async {
   }
 }
 
-Future<Map<String, dynamic>> postPhoto({
+Future<void> postPhoto({
   required int userId,
   required int adventureId,
   required String imageUrl,
+  String? description,
+  double? latitude,
+  double? longitude,
+  int? poiId,
 }) async {
   final response = await http.post(
     Uri.parse('$baseURL/photos'),
@@ -130,12 +134,72 @@ Future<Map<String, dynamic>> postPhoto({
       'user_id':      userId,
       'adventure_id': adventureId,
       'image_url':    imageUrl,
+      'description':  description,
+      'latitude':     latitude,
+      'longitude':    longitude,
+      'poi_id':       poiId,
     }),
+  );
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception('Erreur postPhoto : ${response.statusCode}');
+  }
+}
+
+Future<List<dynamic>> fetchAllPhotos() async {
+  final response = await http.get(Uri.parse('$baseURL/photos'));
+  if (response.statusCode == 200) return json.decode(response.body);
+  throw Exception('Erreur fetchAllPhotos : ${response.statusCode}');
+}
+
+// Récupère tous les POI
+Future<List<dynamic>> fetchAllPoi() async {
+  final response = await http.get(Uri.parse('$baseURL/poi'));
+
+  if (response.statusCode == 200) {
+    return json.decode(response.body);
+  } else {
+    throw Exception('Erreur fetchAllPoi : ${response.statusCode}');
+  }
+}
+
+// Récupère les POI proches d'une position — utilisé quand on prend une photo
+Future<List<dynamic>> fetchNearbyPoi(double latitude, double longitude) async {
+  final response = await http.get(
+    Uri.parse('$baseURL/poi/nearby?latitude=$latitude&longitude=$longitude'),
+  );
+
+  if (response.statusCode == 200) {
+    return json.decode(response.body);
+  } else {
+    throw Exception('Erreur fetchNearbyPoi : ${response.statusCode}');
+  }
+}
+
+// Récupère un POI par son id
+Future<Map<String, dynamic>> fetchPoiById(int id) async {
+  final response = await http.get(Uri.parse('$baseURL/poi/$id'));
+
+  if (response.statusCode == 200) {
+    return json.decode(response.body);
+  } else {
+    throw Exception('Erreur fetchPoiById : ${response.statusCode}');
+  }
+}
+
+Future<List<dynamic>> fetchUserBadges(int userId) async {
+  final response = await http.get(Uri.parse('$baseURL/badges/user?user_id=$userId'));
+  if (response.statusCode == 200) return json.decode(response.body);
+  throw Exception('Erreur fetchUserBadges : ${response.statusCode}');
+}
+
+Future<Map<String, dynamic>> unlockBadge(int userId, int poiId) async {
+  final response = await http.post(
+    Uri.parse('$baseURL/badges'),
+    headers: {'Content-Type': 'application/json'},
+    body: json.encode({'user_id': userId, 'poi_id': poiId}),
   );
   if (response.statusCode == 200 || response.statusCode == 201) {
     return json.decode(response.body);
   }
-  final error = json.decode(response.body);
-  throw Exception(error['error'] ?? 'Erreur postPhoto : ${response.statusCode}');
+  throw Exception('Erreur unlockBadge : ${response.statusCode}');
 }
- 

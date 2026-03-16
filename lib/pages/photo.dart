@@ -13,13 +13,16 @@ import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 
 // ─────────────────────────────────────────────
 //  TAKE PICTURE SCREEN
 // ─────────────────────────────────────────────
 class TakePictureScreen extends StatefulWidget {
-  const TakePictureScreen({super.key});
+  final VoidCallback? onAdventureCreated;
+  final void Function(VoidCallback)? onRegisterRecheck;
+  const TakePictureScreen({super.key, this.onAdventureCreated, this.onRegisterRecheck});
 
   @override
   TakePictureScreenState createState() => TakePictureScreenState();
@@ -49,7 +52,7 @@ class TakePictureScreenState extends State<TakePictureScreen>
   Map<String, dynamic>? _currentAdventure;
   bool _checkingAdventure = true;
   List<dynamic>? _friends;
-  int? _currentUserId; // ID MySQL de l'utilisateur
+  int? _currentUserId;
 
   late AnimationController _shutterAnimController;
   late Animation<double> _shutterScaleAnim;
@@ -64,6 +67,8 @@ class TakePictureScreenState extends State<TakePictureScreen>
     _initializeControllerFuture = _initCamera();
     AdventureNotifier.instance.addListener(_checkAdventure);
     _checkAdventure();
+    widget.onRegisterRecheck?.call(_checkAdventure);
+    _requestLocationPermission();
 
     _shutterAnimController = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 120),
@@ -89,13 +94,24 @@ class TakePictureScreenState extends State<TakePictureScreen>
     super.dispose();
   }
 
+  Future<void> _requestLocationPermission() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+        debugPrint('[GPS] permission demandée : $perm');
+      } else {
+        debugPrint('[GPS] permission existante : $perm');
+      }
+    } catch (e) {
+      debugPrint('[GPS] erreur permission : $e');
+    }
+  }
+
   Future<void> _checkAdventure() async {
     try {
       final pid = Supabase.instance.client.auth.currentUser?.id;
-      if (pid == null) {
-        setState(() => _checkingAdventure = false);
-        return;
-      }
+      if (pid == null) { setState(() => _checkingAdventure = false); return; }
       final u = await fetchUserByProviderId(pid);
       final results = await Future.wait([
         adventureRunning(u["id"]),
@@ -285,7 +301,10 @@ class TakePictureScreenState extends State<TakePictureScreen>
                       onTap: () => CommencerUneNouvelleAventureForm.show(
                         context,
                         users: _friends,
-                        onSuccess: () => AdventureNotifier.instance.notify(),
+                        onSuccess: () {
+                          _checkAdventure();
+                          widget.onAdventureCreated?.call();
+                        },
                       ),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
@@ -462,8 +481,8 @@ class TakePictureScreenState extends State<TakePictureScreen>
 // ─────────────────────────────────────────────
 class DisplayPictureScreen extends StatefulWidget {
   final String imagePath;
-  final int? adventureId;
-  final int? userId;
+  final int?   adventureId;
+  final int?   userId;
 
   const DisplayPictureScreen({
     super.key,
@@ -478,11 +497,14 @@ class DisplayPictureScreen extends StatefulWidget {
 
 class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   late String _currentPath;
-  int _selectedFilter = 0;
+  int    _selectedFilter  = 0;
+  bool   _isUploading     = false;
+  double _uploadProgress  = 0.0;
+  String _uploadStatus    = '';
+  double? _latitude;
+  double? _longitude;
+
   final TextEditingController _captionController = TextEditingController();
-  bool _isUploading = false;
-  double _uploadProgress = 0.0;
-  String _uploadStatus = '';
 
   static const List<Map<String, Object?>> _filters = [
     {'label': 'Original', 'matrix': null},
@@ -495,10 +517,38 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   ];
 
   @override
-  void initState() { super.initState(); _currentPath = widget.imagePath; }
+  void initState() {
+    super.initState();
+    _currentPath = widget.imagePath;
+    _fetchLocation();
+  }
 
   @override
   void dispose() { _captionController.dispose(); super.dispose(); }
+
+  Future<void> _fetchLocation() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever ||
+          perm == LocationPermission.denied) return;
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (mounted) setState(() {
+        _latitude  = pos.latitude;
+        _longitude = pos.longitude;
+      });
+    } catch (e) {
+      debugPrint('[GPS] erreur _fetchLocation : $e');
+    }
+  }
 
   Future<void> _publish() async {
     if (widget.userId == null) {
@@ -518,49 +568,69 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
 
     try {
       final supabase = Supabase.instance.client;
+      if (supabase.auth.currentSession == null) throw Exception('Session expirée');
 
-      // Vérifie que la session Supabase est active
-      if (supabase.auth.currentSession == null) {
-        throw Exception('Session expirée, reconnecte-toi');
-      }
-
-      // ── 1. Lecture du fichier ──────────────
       final bytes    = await File(_currentPath).readAsBytes();
       final fileName = '${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       setState(() { _uploadProgress = 0.2; _uploadStatus = 'Upload en cours…'; });
 
-      // ── 2. Upload Supabase Storage ─────────
-      // bucket public "picture stockage"
-      // + policy : authenticated users peuvent INSERT
       await supabase.storage
           .from(dotenv.env['SUPABASE_BUCKET']!)
-          .uploadBinary(
-            fileName,
-            bytes,
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: false,
-            ),
-          );
-      setState(() { _uploadProgress = 0.6; _uploadStatus = 'Génération du lien…'; });
+          .uploadBinary(fileName, bytes,
+              fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: false));
 
-      // ── 3. URL publique ────────────────────
+      setState(() { _uploadProgress = 0.6; _uploadStatus = 'Génération du lien…'; });
       final publicUrl = supabase.storage
           .from(dotenv.env['SUPABASE_BUCKET']!)
           .getPublicUrl(fileName);
-      setState(() { _uploadProgress = 0.75; _uploadStatus = 'Enregistrement en base…'; });
 
-      // ── 4. Insert MySQL via API Express ────
+      // ── Vérification POI ──────────────────────────
+      setState(() { _uploadProgress = 0.75; _uploadStatus = 'Vérification des POI…'; });
+      List<dynamic> unlockedBadges = [];
+      int? nearestPoiId;
+
+      if (_latitude != null && _longitude != null) {
+        try {
+          final nearbyPois = await fetchNearbyPoi(_latitude!, _longitude!);
+
+          // Prend le POI le plus proche pour le lier à la photo
+          if (nearbyPois.isNotEmpty) {
+            nearestPoiId = nearbyPois[0]['id'] as int?;
+          }
+
+          for (final poi in nearbyPois) {
+            final result = await unlockBadge(widget.userId!, poi['id'] as int);
+            if (result['already_unlocked'] == false) {
+              unlockedBadges.add(poi);
+            }
+          }
+        } catch (e) {
+          debugPrint('[POI] erreur vérification : $e');
+        }
+      }
+      // ─────────────────────────────────────────────
+
+      setState(() { _uploadProgress = 0.88; _uploadStatus = 'Enregistrement en base…'; });
       await postPhoto(
         userId:      widget.userId!,
         adventureId: widget.adventureId!,
         imageUrl:    publicUrl,
+        description: _captionController.text.trim().isEmpty
+            ? null
+            : _captionController.text.trim(),
+        latitude:    _latitude,
+        longitude:   _longitude,
+        poiId:       nearestPoiId, // ← POI lié à la photo
       );
 
       setState(() { _uploadProgress = 1.0; _uploadStatus = 'Publié !'; });
-      await Future.delayed(const Duration(milliseconds: 400));
       if (!mounted) return;
+
       Navigator.of(context).popUntil((route) => route.isFirst);
+
+      if (unlockedBadges.isNotEmpty) {
+        _showBadgeUnlockedDialog(unlockedBadges);
+      }
 
     } catch (e) {
       debugPrint('[publish] erreur : $e');
@@ -570,6 +640,120 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
       );
     }
+  }
+
+  void _showBadgeUnlockedDialog(List<dynamic> badges) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: kBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: kBorder, width: 1.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64, height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: kPrimary.withOpacity(0.12),
+                  border: Border.all(color: kPrimary, width: 2),
+                ),
+                child: const Icon(Icons.emoji_events, color: kPrimary, size: 32),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Badge débloqué !',
+                style: TextStyle(
+                  color: kText,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Tu as découvert un nouveau lieu',
+                style: TextStyle(color: kTextMid, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              ...badges.map((poi) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: kBgCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kPrimary.withOpacity(0.4), width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: kPrimary.withOpacity(0.12),
+                        ),
+                        child: const Icon(Icons.star, color: kPrimary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              poi['badge_name'] ?? poi['name'],
+                              style: const TextStyle(
+                                color: kText,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            if (poi['badge_description'] != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                poi['badge_description'],
+                                style: const TextStyle(
+                                  color: kTextMid,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text(
+                    'Super !',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showFilterSheet() {
@@ -696,7 +880,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         children: [
           img,
           if (_isUploading) _buildUploadOverlay(),
-          // Top bar
           Positioned(
             top: 0, left: 0, right: 0,
             child: Container(
@@ -725,7 +908,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
               ),
             ),
           ),
-          // Bottom bar
           if (!_isUploading)
             Positioned(
               bottom: 0, left: 0, right: 0,
@@ -846,8 +1028,7 @@ class _TopBarBtn extends StatelessWidget {
   final String? label;
   final VoidCallback onTap;
   final bool active;
-  const _TopBarBtn(
-      {required this.icon, required this.onTap, this.label, this.active = false});
+  const _TopBarBtn({required this.icon, required this.onTap, this.label, this.active = false});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -864,9 +1045,7 @@ class _TopBarBtn extends StatelessWidget {
           Icon(icon, color: active ? kPrimary : Colors.white, size: 20),
           if (label != null) ...[
             const SizedBox(width: 4),
-            Text(label!,
-                style: TextStyle(
-                    color: active ? kPrimary : Colors.white, fontSize: 12)),
+            Text(label!, style: TextStyle(color: active ? kPrimary : Colors.white, fontSize: 12)),
           ],
         ],
       ),
@@ -884,8 +1063,7 @@ class _CircleBtn extends StatelessWidget {
     onTap: onTap,
     child: Container(
       width: 40, height: 40,
-      decoration:
-          const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
+      decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
       child: Icon(icon, color: Colors.white, size: 20),
     ),
   );
@@ -896,11 +1074,7 @@ class _BottomActionBtn extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool active;
-  const _BottomActionBtn(
-      {required this.icon,
-      required this.label,
-      required this.onTap,
-      this.active = false});
+  const _BottomActionBtn({required this.icon, required this.label, required this.onTap, this.active = false});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -908,9 +1082,7 @@ class _BottomActionBtn extends StatelessWidget {
     child: Column(children: [
       Icon(icon, color: active ? kPrimary : Colors.white, size: 24),
       const SizedBox(height: 4),
-      Text(label,
-          style: TextStyle(
-              color: active ? kPrimary : Colors.white70, fontSize: 11)),
+      Text(label, style: TextStyle(color: active ? kPrimary : Colors.white70, fontSize: 11)),
     ]),
   );
 }

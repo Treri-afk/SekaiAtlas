@@ -4,6 +4,7 @@ import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
 import 'package:sekai_atlas/features/AventureNotifier.dart';
+import 'package:sekai_atlas/pages/parametrePage.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../functions/api_call.dart';
@@ -54,6 +55,18 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
     }
   }
 
+  void _showBadgesModal(BuildContext context) async {
+    final userId = actualUser["id"] as int?;
+    if (userId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _BadgesModal(userId: userId),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,6 +87,24 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                     background: _buildHeader(),
                   ),
                   actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8, top: 6),
+                      child: _GlowButton(
+                        icon: Icons.settings_outlined,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => ParametresPage(user: actualUser)),
+                        ),
+                        color: kTextMid,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8, top: 6),
+                      child: _GlowButton(
+                        icon: Icons.emoji_events,
+                        onTap: () => _showBadgesModal(context),
+                        color: kAccent,
+                      ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(right: 16, top: 6),
                       child: _GlowButton(
@@ -233,26 +264,28 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
 class _GlowButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _GlowButton({required this.icon, required this.onTap});
+  final Color? color;
+  const _GlowButton({required this.icon, required this.onTap, this.color});
 
   @override
   Widget build(BuildContext context) {
+    final c = color ?? kPrimary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: kPrimary,
+          color: c,
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: kPrimary.withOpacity(0.4),
+              color: c.withOpacity(0.4),
               blurRadius: 12,
               offset: const Offset(0, 3),
             ),
           ],
         ),
-        child: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -435,4 +468,219 @@ class _HexPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+// ─────────────────────────────────────────────
+//  BADGES MODAL
+// ─────────────────────────────────────────────
+
+class _BadgesModal extends StatefulWidget {
+  final int userId;
+  const _BadgesModal({required this.userId});
+
+  @override
+  State<_BadgesModal> createState() => _BadgesModalState();
+}
+
+class _BadgesModalState extends State<_BadgesModal> {
+  List<dynamic> _badges = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final badges = await fetchUserBadges(widget.userId);
+      if (mounted) setState(() { _badges = badges; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Color _rarityColor(String? rarity) {
+    switch (rarity) {
+      case 'legendaire': return const Color(0xFFE8A020);
+      case 'rare':       return const Color(0xFF5B8DD9);
+      default:           return kTextMid;
+    }
+  }
+
+  String _rarityLabel(String? rarity) {
+    switch (rarity) {
+      case 'legendaire': return '★ Légendaire';
+      case 'rare':       return '◆ Rare';
+      default:           return '· Commun';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: kBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: kPrimary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: kAccent.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kAccent.withOpacity(0.4)),
+                  ),
+                  child: const Icon(Icons.emoji_events, color: kAccent, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Mes badges',
+                      style: TextStyle(
+                        color: kText, fontSize: 18, fontWeight: FontWeight.w800)),
+                    Text('${_badges.length} badge${_badges.length > 1 ? 's' : ''} débloqué${_badges.length > 1 ? 's' : ''}',
+                      style: const TextStyle(color: kTextDim, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: kBorder),
+          // Liste
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: kPrimary))
+                : _badges.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.explore_off_outlined, color: kTextDim, size: 48),
+                            const SizedBox(height: 12),
+                            const Text('Aucun badge pour l\'instant',
+                              style: TextStyle(color: kTextMid, fontSize: 14)),
+                            const SizedBox(height: 6),
+                            const Text('Prends des photos près des POI pour en débloquer !',
+                              style: TextStyle(color: kTextDim, fontSize: 12),
+                              textAlign: TextAlign.center),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.fromLTRB(
+                          16, 12, 16, MediaQuery.of(context).padding.bottom + 16),
+                        itemCount: _badges.length,
+                        itemBuilder: (_, i) {
+                          final b = _badges[i];
+                          final rarity = b['rarity']?.toString();
+                          final color  = _rarityColor(rarity);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: kBgCard,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 48, height: 48,
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: color.withOpacity(0.4)),
+                                  ),
+                                  child: Icon(Icons.emoji_events,
+                                    color: color, size: 24),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(children: [
+                                        Expanded(
+                                          child: Text(
+                                            b['badge_name']?.toString() ?? '',
+                                            style: const TextStyle(
+                                              color: kText,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: color.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: color.withOpacity(0.35)),
+                                          ),
+                                          child: Text(
+                                            _rarityLabel(rarity),
+                                            style: TextStyle(
+                                              color: color,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ]),
+                                      if (b['badge_description'] != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          b['badge_description'].toString(),
+                                          style: const TextStyle(
+                                            color: kTextMid, fontSize: 12, height: 1.4),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 6),
+                                      Row(children: [
+                                        const Icon(Icons.place_outlined,
+                                          color: kTextDim, size: 11),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          b['name']?.toString() ?? '',
+                                          style: const TextStyle(
+                                            color: kTextDim, fontSize: 11),
+                                        ),
+                                      ]),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
 }
