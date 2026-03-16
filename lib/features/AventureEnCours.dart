@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sekai_atlas/features/CommencerUneNouvelleAventure.dart';
 import 'package:sekai_atlas/features/AventureDetailPopup.dart';
 import 'package:sekai_atlas/functions/api_call.dart';
+import 'package:sekai_atlas/features/AventureNotifier.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -34,11 +35,14 @@ class _AventureEnCoursState extends State<AventureEnCours>
     _pulseAnim = Tween<double>(begin: 0.88, end: 1.12).animate(
       CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeInOut),
     );
+    // Se recharge automatiquement quand n'importe quelle page crée/supprime une aventure
+    AdventureNotifier.instance.addListener(reload);
     reload();
   }
 
   @override
   void dispose() {
+    AdventureNotifier.instance.removeListener(reload);
     _pulseCtrl?.dispose();
     super.dispose();
   }
@@ -88,7 +92,8 @@ class _AventureEnCoursState extends State<AventureEnCours>
       onTap: () => CommencerUneNouvelleAventureForm.show(
         context,
         users: friend,
-        onSuccess: () => reload(),
+        // Un seul appel notifie toutes les pages abonnées
+        onSuccess: () => AdventureNotifier.instance.notify(),
       ),
       child: Container(
         height: 160,
@@ -137,7 +142,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
   }
 
   Widget _buildActive() {
-    // Convertit List<dynamic>? en List<dynamic> non-nullable pour le popup
     final playersList = List<dynamic>.from(users ?? []);
 
     return GestureDetector(
@@ -145,6 +149,9 @@ class _AventureEnCoursState extends State<AventureEnCours>
         context,
         adventure: Map<String, dynamic>.from(adventure! as Map),
         players: playersList,
+        showTerminate: true,
+        // La suppression notifie aussi toutes les pages abonnées
+        onTerminated: () => AdventureNotifier.instance.notify(),
       ),
       child: Container(
         decoration: _cardDecor(),
@@ -152,7 +159,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Badge + chevron
             Row(
               children: [
                 Container(
@@ -197,7 +203,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
               ],
             ),
             const SizedBox(height: 14),
-            // Nom
             Text(
               adventure?["name"] ?? 'Aventure',
               style: const TextStyle(
@@ -205,7 +210,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
                 fontWeight: FontWeight.w900, letterSpacing: 0.3,
               ),
             ),
-            // Description
             if (adventure?["description"] != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -216,7 +220,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
               ),
             ],
             const SizedBox(height: 16),
-            // Séparateur
             Container(
               height: 1,
               decoration: BoxDecoration(
@@ -226,8 +229,7 @@ class _AventureEnCoursState extends State<AventureEnCours>
               ),
             ),
             const SizedBox(height: 14),
-            // Participants
-            if (users != null && users!.isNotEmpty) ...[
+            if (users != null && users!.isNotEmpty)
               Row(
                 children: [
                   SizedBox(
@@ -269,7 +271,6 @@ class _AventureEnCoursState extends State<AventureEnCours>
                   ),
                 ],
               ),
-            ],
           ],
         ),
       ),

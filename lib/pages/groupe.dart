@@ -3,6 +3,7 @@ import 'package:sekai_atlas/features/AventureEnCours.dart';
 import 'package:sekai_atlas/features/Friends.dart';
 import 'package:sekai_atlas/features/ListAventure.dart';
 import 'package:sekai_atlas/features/ListeAventurier.dart';
+import 'package:sekai_atlas/features/AventureNotifier.dart';
 import 'package:sekai_atlas/theme/rpg_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../functions/api_call.dart';
@@ -22,7 +23,15 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // Se recharge automatiquement sur toute création / suppression d'aventure
+    AdventureNotifier.instance.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    AdventureNotifier.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -81,6 +90,8 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                     delegate: SliverChildListDelegate([
                       const _SectionLabel(title: 'Aventure en cours', sub: 'quête active'),
                       const SizedBox(height: 12),
+                      // Plus de callbacks à passer — AventureEnCours écoute
+                      // AdventureNotifier directement
                       const AventureEnCours(),
                       const SizedBox(height: 32),
                       _SectionLabel(title: 'Mes aventures', sub: '${adventures.length} quêtes'),
@@ -98,13 +109,11 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── Header parchemin clair ─────────────────
   Widget _buildHeader() {
     return Container(
       decoration: const BoxDecoration(color: kBg),
       child: Stack(
         children: [
-          // Lueur décorative coin droit
           Positioned(
             right: -20, top: -20,
             child: Container(
@@ -117,18 +126,15 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // Décor hexagonal coin droit
           Positioned(
             right: -10, top: 10,
             child: _GeometricDecor(size: 150, color: kPrimary.withOpacity(0.09)),
           ),
-          // Contenu
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 60, 72, 16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Avatar avec bordure dorée
                 Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
@@ -154,13 +160,11 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Infos utilisateur
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Pseudo
                       Text(
                         actualUser["username"] ?? 'Aventurier',
                         style: const TextStyle(
@@ -171,7 +175,6 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // Badge "Membre de la guilde"
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
@@ -196,7 +199,6 @@ class _GroupePageState extends State<GroupePage> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Stats alliés / quêtes
                       Row(
                         children: [
                           _MiniStat(
@@ -372,9 +374,6 @@ class _RpgDivider extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────
-//  GEOMETRIC DECOR (hexagone)
-// ─────────────────────────────────────────────
 class _GeometricDecor extends StatelessWidget {
   final double size;
   final Color color;

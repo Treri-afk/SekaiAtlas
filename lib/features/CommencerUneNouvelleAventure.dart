@@ -9,7 +9,7 @@ class CommencerUneNouvelleAventureForm {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final selected = List<bool>.filled(users?.length ?? 0, false);
-
+    print(users);
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

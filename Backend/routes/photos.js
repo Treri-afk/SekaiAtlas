@@ -27,5 +27,23 @@ router.get("/adventure", (req, res) => {
     });
 });
 
+router.post("/", (req, res) => {
+    const { user_id, adventure_id, image_url } = req.body;
+
+    if (!user_id || !adventure_id || !image_url) {
+        return res.status(400).json({ error: "user_id, adventure_id et image_url sont requis" });
+    }
+
+    const sql = `
+        INSERT INTO photos (user_id, adventure_id, image_url, created_at)
+        VALUES (?, ?, ?, NOW())
+    `;
+
+    db.query(sql, [user_id, adventure_id, image_url], (err, result) => {
+        if (err) return res.status(500).json({ message: err.message });
+        res.status(201).json({ id: result.insertId, user_id, adventure_id, image_url });
+    });
+});
+
 
 module.exports = router;

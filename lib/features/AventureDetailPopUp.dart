@@ -7,6 +7,8 @@ class AventureDetailPopup {
     BuildContext context, {
     required Map<String, dynamic> adventure,
     List<dynamic>? players,
+    bool showTerminate = false,
+    VoidCallback? onTerminated,
   }) {
     showModalBottomSheet(
       context: context,
@@ -15,6 +17,8 @@ class AventureDetailPopup {
       builder: (_) => _AventureDetailSheet(
         adventure: adventure,
         players: players,
+        showTerminate: showTerminate,
+        onTerminated: onTerminated,
       ),
     );
   }
@@ -23,10 +27,14 @@ class AventureDetailPopup {
 class _AventureDetailSheet extends StatefulWidget {
   final Map<String, dynamic> adventure;
   final List<dynamic>? players;
+  final bool showTerminate;
+  final VoidCallback? onTerminated;
 
   const _AventureDetailSheet({
     required this.adventure,
     this.players,
+    this.showTerminate = false,
+    this.onTerminated,
   });
 
   @override
@@ -147,6 +155,41 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
     );
   }
 
+  void _showTerminateDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => _TerminateDialog(
+        adventureName: widget.adventure["name"] ?? 'cette aventure',
+        onConfirm: () async {
+          Navigator.pop(dialogCtx); // ferme le dialog
+          await _terminateAdventure(context);
+        },
+      ),
+    );
+  }
+
+  Future<void> _terminateAdventure(BuildContext context) async {
+    try {
+      final id = widget.adventure["id"] as int;
+      await terminateAdventure(id);
+      if (!mounted) return;
+      Navigator.pop(context); // ferme le popup
+      widget.onTerminated?.call(); // recharge AventureEnCours
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aventure terminée ✓'),
+          backgroundColor: kSuccess,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur : $e'), backgroundColor: kError),
+      );
+    }
+  }
+
   Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
@@ -198,6 +241,25 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
             ]),
           ),
           const SizedBox(width: 8),
+          if (widget.showTerminate) ...[
+            GestureDetector(
+              onTap: () => _showTerminateDialog(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: kError.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: kError.withOpacity(0.3)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.flag_outlined, color: kError, size: 14),
+                  const SizedBox(width: 5),
+                  Text('Terminer', style: TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
@@ -344,6 +406,106 @@ class _AventureDetailSheetState extends State<_AventureDetailSheet> {
           ]),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  TERMINATE DIALOG
+// ─────────────────────────────────────────────
+class _TerminateDialog extends StatelessWidget {
+  final String adventureName;
+  final VoidCallback onConfirm;
+  const _TerminateDialog({required this.adventureName, required this.onConfirm});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: kBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: kError.withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icône
+            Container(
+              width: 56, height: 56,
+              decoration: BoxDecoration(
+                color: kError.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: kError.withOpacity(0.3)),
+              ),
+              child: const Icon(Icons.flag, color: kError, size: 26),
+            ),
+            const SizedBox(height: 16),
+            // Titre
+            const Text(
+              'Terminer l\'aventure ?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kText),
+            ),
+            const SizedBox(height: 10),
+            // Message
+            Text(
+              'Voulez-vous vraiment terminer "$adventureName" ? Cette action est irréversible.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: kTextMid, height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            // Divider
+            Container(height: 1, color: kBorder),
+            const SizedBox(height: 20),
+            // Boutons
+            Row(children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: kBgCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: kBorder),
+                    ),
+                    child: const Center(
+                      child: Text('Annuler',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kTextMid)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: onConfirm,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: kError,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(color: kError.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Text('Terminer',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
     );
   }
 }

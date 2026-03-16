@@ -39,15 +39,41 @@ class ListeAventure extends StatelessWidget {
       );
     }
 
+    // Filtre les aventures en cours — elles sont déjà affichées dans AventureEnCours
+    final filtered = adventures!
+        .where((a) => a["is_running"] != 1)
+        .toList();
+
+    if (filtered.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: kBgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPrimary.withOpacity(0.18)),
+          boxShadow: [BoxShadow(color: kText.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))],
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, color: kTextMid, size: 16),
+            SizedBox(width: 8),
+            Text('Aucune aventure pour le moment',
+                style: TextStyle(color: kTextMid, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+
     return SizedBox(
       height: 140,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: adventures!.length,
+        itemCount: filtered.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           // Cast explicite pour satisfaire le type Map<String, dynamic>
-          final adv    = Map<String, dynamic>.from(adventures![i] as Map);
+          final adv    = Map<String, dynamic>.from(filtered[i] as Map);
           final accent = _accents[i % _accents.length];
           return GestureDetector(
             onTap: () => AventureDetailPopup.show(context, adventure: adv),
@@ -81,16 +107,47 @@ class ListeAventure extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: accent.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: accent.withOpacity(0.3)),
-                          ),
-                          child: Text('QUÊTE',
-                            style: TextStyle(color: accent, fontSize: 9,
-                                fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: accent.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: accent.withOpacity(0.3)),
+                              ),
+                              child: Text('QUÊTE',
+                                style: TextStyle(color: accent, fontSize: 9,
+                                    fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                            ),
+                            if (adv["is_running"] == 1) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: kSuccess.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: kSuccess.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 5, height: 5,
+                                      decoration: BoxDecoration(
+                                        color: kSuccess, shape: BoxShape.circle,
+                                        boxShadow: [BoxShadow(color: kSuccess.withOpacity(0.5), blurRadius: 4)],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text('EN COURS',
+                                      style: TextStyle(color: kSuccess, fontSize: 9,
+                                          fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const Spacer(),
                         Text(

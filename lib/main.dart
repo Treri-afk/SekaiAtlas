@@ -75,20 +75,19 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
-  // Page photo (index 1) par défaut
   int _currentIndex = 1;
 
-  static const _pages = <Widget>[
+  // Plus aucun callback manuel — tout passe par AdventureNotifier
+  static const List<Widget> _pages = [
     MapPage(),
     TakePictureScreen(),
     GroupePage(),
   ];
 
-  // Données des onglets
   static const _tabs = [
-    _TabData(icon: Icons.map_outlined,      activeIcon: Icons.map,          label: 'Carte'),
+    _TabData(icon: Icons.map_outlined,          activeIcon: Icons.map,          label: 'Carte'),
     _TabData(icon: Icons.photo_camera_outlined, activeIcon: Icons.photo_camera, label: 'Photo'),
-    _TabData(icon: Icons.people_outline,    activeIcon: Icons.people,       label: 'Guilde'),
+    _TabData(icon: Icons.people_outline,        activeIcon: Icons.people,       label: 'Guilde'),
   ];
 
   @override
@@ -150,20 +149,11 @@ class _RpgNavBar extends StatelessWidget {
           child: Row(
             children: List.generate(tabs.length, (i) {
               final selected = i == currentIndex;
-              // Le bouton central (Photo) est mis en avant
               final isCenter = i == 1;
               return Expanded(
                 child: isCenter
-                    ? _CenterTab(
-                        tab: tabs[i],
-                        selected: selected,
-                        onTap: () => onTap(i),
-                      )
-                    : _SideTab(
-                        tab: tabs[i],
-                        selected: selected,
-                        onTap: () => onTap(i),
-                      ),
+                    ? _CenterTab(tab: tabs[i], selected: selected, onTap: () => onTap(i))
+                    : _SideTab(tab: tabs[i], selected: selected, onTap: () => onTap(i)),
               );
             }),
           ),
@@ -173,7 +163,6 @@ class _RpgNavBar extends StatelessWidget {
   }
 }
 
-// ── Onglet latéral (Map / Guilde) ─────────────
 class _SideTab extends StatelessWidget {
   final _TabData tab;
   final bool selected;
@@ -220,7 +209,6 @@ class _SideTab extends StatelessWidget {
                 letterSpacing: 0.3,
               ),
             ),
-            // Indicateur actif
             const SizedBox(height: 3),
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -238,7 +226,6 @@ class _SideTab extends StatelessWidget {
   }
 }
 
-// ── Onglet central (Photo) mis en avant ───────
 class _CenterTab extends StatelessWidget {
   final _TabData tab;
   final bool selected;
@@ -253,7 +240,6 @@ class _CenterTab extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Bouton surélevé
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
@@ -309,7 +295,6 @@ class _CenterTab extends StatelessWidget {
               letterSpacing: 0.3,
             ),
           ),
-          // Indicateur (transparent pour garder l'alignement)
           const SizedBox(height: 5),
         ],
       ),
